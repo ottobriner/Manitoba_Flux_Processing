@@ -116,19 +116,21 @@ met$year <- year(met$datetime)
 met$hour <- hour(met$datetime)
 
 # Creating columns for new & renamed variables: net radiation, saturated vapour pressure (es), vpd. --> Missing Soil Heat Flux, so can't derive soil heat flux (G), & available energy (ae),
-met$NR <- met$RN_1_1_1
+met$NR <- met$RN # is radiation from met tower in Wm-2?
 
-# Converting air and soil temp to Celsius
-met$TA_1_1_1 <- met$TA_1_1_1 - 273.15
-met$TS_1_1_1 <- met$TS_1_1_1 - 273.15
-met$TS_2_1_1 <- met$TS_2_1_1 - 273.15
-met$TS_3_1_1 <- met$TS_3_1_1 - 273.15
+# # Converting air and soil temp to Celsius
+# met$TA_1_1_1 <- met$TA_1_1_1 - 273.15
+# met$TS_1_1_1 <- met$TS_1_1_1 - 273.15
+# met$TS_2_1_1 <- met$TS_2_1_1 - 273.15
+# met$TS_3_1_1 <- met$TS_3_1_1 - 273.15
 
-met$es <- 0.611*exp(17.502*met$TA_1_1_1/(met$TA_1_1_1+240.97))
-met$VPD <- met$es*(1-(met$RH_1_1_1/100))
+# met$es <- 0.611*exp(17.502*met$TA_1_1_1/(met$TA_1_1_1+240.97))
+met$es <- 0.611*exp(17.502*met$TA_EP/(met$TA_EP+240.97))
+met$VPD <- met$es*(1-(met$RH_EP/100))
 
 
-met$Timestamp<-as.POSIXct(paste(met$date, met$time), format="%Y-%m-%d %H:%M", tz = "Etc/GMT+8")
+# met$Timestamp<-as.POSIXct(paste(met$date, met$time), format="%Y-%m-%d %H:%M", tz = "Etc/GMT+8")
+met$Timestamp <- as.POSIXct(met$datetime)
 
 ###
 # GAPFILLING: Checking for gaps in half-hourly data, then filling with NA in a new dataframe.
@@ -177,8 +179,8 @@ for(i in 2:ncol(cont.DS)){
 
 # Adding local time
 
-date_loca <- ymd_hms(cont.DS$DATE, tz="America/Winnipeg")
-date_local<-as.POSIXlt(date_loca,tz="America/Winnipeg")
+date_loca <- ymd_hms(cont.DS$DATE, tz="America/Chicago")
+date_local<-as.POSIXlt(date_loca,tz="America/Chicago")
 
 for (i in 1:nrow(cont.DS)){
   cont.DS$Year_local[i]<-as.integer(as.character(date_local[i],"%Y"))
