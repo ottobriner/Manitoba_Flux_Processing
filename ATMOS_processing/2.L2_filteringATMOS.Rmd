@@ -1,7 +1,7 @@
 ---
 title: "5.L2_filtering"
-author: "Sara Knox"
-date: "11/10/2019"
+author: "Otto Briner"
+date: "02/03/2023"
 output: html_document
 ---
 
@@ -25,7 +25,7 @@ knitr::opts_knit$set(root.dir = dir)
 
 ```{r Load non-filtered data, echo=FALSE, include=FALSE}
 input<-read.csv(paste('./processed/ATMOS_L1.csv',sep=''))
-input$DATE<-as.POSIXct(input$DATE,format="%Y-%m-%d %H:%M:%S", tz = "UTC")
+input$DATE<-as.POSIXct(input$DATE,format="%Y-%m-%d %H:%M:%S", tz = "Etc/GMT+6")
 
 # Define new data frame
 Data_QAQC<-input
@@ -102,18 +102,36 @@ plot_ly(data = Data_QAQC, x = ~DATE, y = ~co2_flux, name = 'original', type = 's
 
 met <- data.frame()
 # Get header names
-names_temp <- names(read.csv(paste("/home/otto/data/atmos-flux-data/output/atmos484_20230121114953.csv")))
+names_temp <- names(read.csv(paste("/home/otto/data/atmos-flux-data/output/atmos484_20230131_fluxnet.csv")))
 
 #Load data and apply header names
-temp <- read.csv(paste("/home/otto/data/atmos-flux-data/output/atmos484_20230121114953.csv"))
+temp <- read.csv(paste("/home/otto/data/atmos-flux-data/output/atmos484_20230131_fluxnet.csv"))
 names(temp) <- names_temp
 
 # Append to file
 met <- smartbind(met, temp, fill="NA")
+# met <- met[(0:(nrow(met)-1)),] # last row is all NA
 
-# adding "year" and "hour" columns
-met$year <- year(met$datetime)
-met$hour <- hour(met$datetime)
+# met$Timestamp<-as.POSIXct(paste(met$date, met$time), format="%Y-%m-%d %H:%M", tz = "Etc/GMT+8")
+met$Timestamp <- as.POSIXct(met$date, tz = "Etc/GMT+6")
+
+# Formatting met date as yyyy-mm-dd hh:mm:ss to include time and adding "Year" and "hour" columns
+for(i in 1:length(met$date)) {
+  time <- met$time[i]
+  met$date[i] <- paste(met$date[i],time)
+  
+  Yr <- as.numeric(substr(met$date[i],start=1,stop=4))
+  Hr <- as.numeric(substr(met$date[i],start=12, stop = 13))
+  
+  Min <- substr(met$date[i],start=15,stop=16)
+  if (Min == "30") {
+    Hr <- Hr+0.5
+  } 
+  
+  met$year[i] <- Yr
+  met$hour[i] <- Hr
+  
+}
 
 # Creating columns for new & renamed variables: net radiation, saturated vapour pressure (es), vpd. --> Missing Soil Heat Flux, so can't derive soil heat flux (G), & available energy (ae),
 met$NR <- met$RN # is radiation from met tower in Wm-2?
@@ -128,10 +146,6 @@ met$NR <- met$RN # is radiation from met tower in Wm-2?
 met$es <- 0.611*exp(17.502*met$TA_EP/(met$TA_EP+240.97))
 met$VPD <- met$es*(1-(met$RH_EP/100))
 
-
-# met$Timestamp<-as.POSIXct(paste(met$date, met$time), format="%Y-%m-%d %H:%M", tz = "Etc/GMT+8")
-met$Timestamp <- as.POSIXct(met$datetime)
-
 ###
 # GAPFILLING: Checking for gaps in half-hourly data, then filling with NA in a new dataframe.
 ###
@@ -143,12 +157,12 @@ data.ordered[1,1:5]
 data.ordered[nrow(data.ordered),1:5]
 
 # Generating new dataframe and gapfilling with NA
-
-ts<-data.ordered
+ts<-met
+# ts<-data.ordered
 
 #to estimate necessary parameters to generate the new empty dataframe with complete rows 
 beginning<-as.numeric(ts$Timestamp[1])      # Finding number representing the first data of our time series
-as.POSIXct(beginning,origin="1970-01-01 00:00:00",tz="Etc/GMT+8") # to confirm that the beginning is the right one
+as.POSIXct(beginning,origin="1970-01-01 00:00:00",tz="Etc/GMT+6") # to confirm that the beginning is the right one
 ts$Timestamp[1]
 
 Ystart<-as.integer(as.character(ts[1,ncol(ts)], "%Y")) # Starting year
@@ -156,11 +170,11 @@ Yend<-as.integer(as.character(ts[nrow(ts),ncol(ts)], "%Y")) # End  year
 Dstart<-as.POSIXlt(ts[1,ncol(ts)])$yday # Starting date
 Dend<-as.POSIXlt(ts[nrow(ts),ncol(ts)])$yday+1 # End date
 
-Ndays <- as.numeric((difftime(ts$Timestamp[nrow(ts)],ts$Timestamp[1], "Etc/GMT+8",
+Ndays <- as.numeric((difftime(ts$Timestamp[nrow(ts)],ts$Timestamp[1], "Etc/GMT+6",
                               units = c("days"))), units="days")
 
 Tsteps<-beginning+seq(from=0,to=((Ndays)*(60*60*24)),by=(30*60)) # 30 minute steps in seconds from the beginning date to Ndays +1 (to ensure all measured data are included in the new file)
-DATE<-as.POSIXct(Tsteps,origin="1970-01-01 00:00:00",tz="Etc/GMT+8") # Turning steps back into dates
+DATE<-as.POSIXct(Tsteps,origin="1970-01-01 00:00:00",tz="Etc/GMT+6") # Turning steps back into dates
 
 # CHECK start and end times between the two files are equal.
 DATE[1] == ts$Timestamp[1]
@@ -198,12 +212,27 @@ cont.DS[cont.DS == -9999] <- NA
 
 met <- cont.DS
 
+# trimming to dates of flux file
+met <- met[pmatch(Data_QAQC$DATE, met$DATE),]
+
+start_rad <- min(which(!is.na(met$NR)))
+end_rad <- max(which(!is.na(met$NR)))
+met <- met[start_rad:end_rad,]
+
+# fill net radiation forward (assuming only every other half hour is missing)
+met <- met %>% 
+  fill(NR)
+
+# trim met and flux data to dates of met tower data (net radiation)
+met <- met[!is.na(met$NR),]
+Data_QAQC <- Data_QAQC[pmatch(met$DATE, Data_QAQC$DATE),]
+
 #Match met and flux time series
-met$date <- as.POSIXct(met$date, Origin = "1970-01-01 00:00:00", tz = "UTC")
+met$DATE <- as.POSIXct(met$DATE, Origin = "1970-01-01 00:00:00", tz = "Etc/GMT+6")
 
 # Plot met data if needed
 # Eddypro biomet variable reference list: https://www.licor.com/env/support/EddyPro/topics/biomet-data-format.html, https://www.licor.com/env/support/Biomet-System/topics/viewing-logged-data.html
-plot_ly(data = met, x = ~date, y = ~TA_1_1_1, type = 'scatter', mode = 'lines') %>% 
+plot_ly(data = met, x = ~DATE, y = ~Tsoil_mean, type = 'scatter', mode = 'lines') %>% 
   toWebGL()
 
 Data_QAQC$DATE[1]
@@ -213,6 +242,7 @@ Data_QAQC$obs<-c(1:nrow(Data_QAQC))
 met$obs1 <- c(1:nrow(met)) #Testing because 'obs' column doesn't start at 1 for some reason
 
 start_date<-Data_QAQC$DATE[1]
+met[nrow(met),1]
 
 if (Data_QAQC$DATE[nrow(Data_QAQC)]>met[nrow(met),1]) { end_date<-met[nrow(met),1] 
 }else{
@@ -228,8 +258,8 @@ F_end<-Data_QAQC[Data_QAQC$DATE==end_date,match('obs',names(Data_QAQC))]
 # M_start<-met[met$date==start_date,match('obs1',names(met))] #TEST
 # M_end<-met[met$date==end_date,match('obs1',names(met))] #TEST
 
-start_bool <- met$date==start_date
-end_bool <- met$date == end_date
+start_bool <- met$DATE==start_date
+end_bool <- met$DATE == end_date
 
 M_start<-met[which(start_bool==TRUE),match('obs1',names(met))] #TEST
 M_end<-met[which(end_bool==TRUE),match('obs1',names(met))] #TEST
@@ -237,14 +267,14 @@ M_end<-met[which(end_bool==TRUE),match('obs1',names(met))] #TEST
 M_end-M_start==F_end-F_start   #If everything goes well this should be TRUE 
 
 # # Create output file to use in REddyProc for ustar filtering
-output <- cbind(met[M_start:M_end,match(c('year','DOY','hour','TA_1_1_1','SWIN_1_1_1'),names(met))], Data_QAQC[F_start:F_end,match(c('co2_flux','u.','wind_dir'),names(Data_QAQC))])
+output <- cbind(met[M_start:M_end,match(c('year','DOY_START','hour','TA_EP','RN'),names(met))], Data_QAQC[F_start:F_end,match(c('co2_flux','u.','wind_dir'),names(Data_QAQC))])
 
 # rounding DOY down
 output$DOY <- floor(output$DOY)
 
 
 # Reorder & rename columns
-output <- output[c("year","DOY", "hour","co2_flux","SWIN_1_1_1","TA_1_1_1","u.","wind_dir")]
+output <- output[c("year","DOY", "hour","co2_flux","RN","TA_EP","u.","wind_dir")]
 names_output<-c('Year','DoY','Hour','NEE','Rg','Tair','Ustar',"Wind_dir")
 names(output)<-names_output
   
@@ -256,16 +286,15 @@ output <- rbind(UNITS,output)
 #Transforming missing values in -9999:
 output[is.na(output)]<--9999
 
-
-
-#Saving the file:
-write.table(output, file = paste('./flux_data/REddyProc_input/for_ustar_filtering','.txt',sep=''),row.names=FALSE,sep='\t') 
+#Saving the file
+write.table(output, file = paste('/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_ustar_filtering','.txt',sep=''),row.names=FALSE,sep='\t') 
 ```
 
 ```{r Ustar filtering in REddyProc, echo=FALSE, warning=FALSE, include=FALSE}
 # Load data
-EddyData.F <- fLoadTXTIntoDataframe("./flux_data/REddyProc_input/for_ustar_filtering.txt")
-EddyData.F <- read.csv('./processed/ATMOS_L1.csv')
+EddyData.F <- fLoadTXTIntoDataframe("/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_ustar_filtering.txt")
+# EddyData.F <- read.csv('./processed/ATMOS_L1.csv')
+
 #Gapfill year and hour NA's
 na_idx = which(is.na(EddyData.F$Hour))
 
@@ -304,11 +333,11 @@ for (idx in na_idx){
 
 
 # Add time stamp in POSIX time format
-EddyDataWithPosix.F <- fConvertTimeToPosix(EddyData.F, 'YDH',Year.s = 'Year',Day.s = 'DoY',Hour.s = 'Hour')
+EddyDataWithPosix.F <- fConvertTimeToPosix(EddyData.F, 'YDH',Year = 'Year',Day = 'DoY',Hour = 'Hour') # Year.s, Day.s, Hour.s deprecated
 
 
 
-EddyProc.C <- sEddyProc$new('YOUNG-CE', EddyDataWithPosix.F,
+EddyProc.C <- sEddyProc$new('ATMOS', EddyDataWithPosix.F,
                             c("NEE","Rg","Tair","Ustar"))
 
 
@@ -334,7 +363,8 @@ plot_ly(data = Data_QAQC, x = ~DATE, y = ~ustar_thr, type = 'scatter', mode = 'l
 ```
 
 ```{r Create bad ustar flag, echo=FALSE, warning=FALSE}
-Data_QAQC$badustar <- ifelse(abs(input$u.) < Data_QAQC$ustar_thr | input$u. > ustar_max,1,0)
+# Data_QAQC$badustar <- ifelse(abs(input$u.) < Data_QAQC$ustar_thr | input$u. > ustar_max,1,0)
+Data_QAQC$badustar <- ifelse(abs(Data_QAQC$u.) < Data_QAQC$ustar_thr | Data_QAQC$u. > ustar_max,1,0)
 
 plot_ly(data = Data_QAQC, x = ~DATE, y = ~u., name = 'original', type = 'scatter', mode = 'lines') %>%
   add_trace(data = Data_QAQC, x = ~DATE[badustar == 1], y = ~u.[badustar == 1], name = 'removed', mode = 'markers') %>% 
@@ -407,6 +437,10 @@ plot_ly(data = input, x = ~DATE, y = ~co2_flux, name = 'original', type = 'scatt
 plot_ly(data = input, x = ~DATE, y = ~ch4_flux*1000, name = 'original', type = 'scatter', mode = 'markers', marker = list(size = 3)) %>%
   add_trace(data = Data_QAQC, x = ~DATE, y = ~ch4_flux*1000, name = 'retained', mode = 'markers') %>%
  layout(yaxis = list(range = c(-300, 800))) %>% 
+  toWebGL()
+
+plot_ly(data = input, x = ~DATE, y = ~rssi_77_mean, name = 'original', type = 'scatter', mode = 'markers', marker = list(size = 3)) %>%
+ # layout(yaxis = list(range = c(-300, 800))) %>% 
   toWebGL()
 
 # Bad rotatoion angle
@@ -483,7 +517,7 @@ plot_ly(data = input, x = ~DATE, y = ~ch4_var, name = 'original', type = 'scatte
 ```
 
 ```{r Save L2 output, echo=FALSE, warning=FALSE}
-write.csv(Data_QAQC,paste('./flux_data/Young_L2','.csv',sep=''),row.names=FALSE)   
+write.csv(Data_QAQC,paste('/home/otto/data/atmos-flux-data/processed/ATMOS_L2','.csv',sep=''),row.names=FALSE)   
 ```
 
 ```{r Now export data for gap-filling and partitioning using REddyProc, echo=FALSE, warning=FALSE}
@@ -491,20 +525,20 @@ write.csv(Data_QAQC,paste('./flux_data/Young_L2','.csv',sep=''),row.names=FALSE)
 met$VPD_hPa <- met$VPD*10
 
 # Create output file to use in REddyProc for ustar filtering - need all soil temp reps?
-output <- cbind(met[M_start:M_end,match(c('year','DOY','hour','TA_1_1_1','SWIN_1_1_1','RH_1_1_1', 'VPD_hPa','TS_1_1_1','TS_2_1_1', 'TS_3_1_1'),names(met))], 
-               Data_QAQC[F_start:F_end,match(c('co2_flux','ch4_flux','LE','H','u.','wind_dir'),names(Data_QAQC))])
+output <- cbind(met[,c('year','DOY_local','hour','TA_EP','NR','RH_EP', 'VPD_hPa','Tsoil_mean')], 
+               Data_QAQC[,match(c('co2_flux','ch4_flux','LE','H','u.','wind_dir'),names(Data_QAQC))])
 
 
 # Reorder & rename columns
 
 #01/07/2020 - add reps for soil temp
-output <- output[c("year", "DOY", "hour","co2_flux","ch4_flux","LE","H","SWIN_1_1_1","TA_1_1_1","TS_1_1_1","TS_2_1_1", 'TS_3_1_1', "RH_1_1_1","VPD_hPa","u.","wind_dir")]
+output <- output[c("year", "DOY_local", "hour","co2_flux","ch4_flux","LE","H","NR","TA_EP","Tsoil_mean", "RH_EP","VPD_hPa","u.","wind_dir")]
 
-names_output<-c('Year','DoY','Hour','NEE','FCH4','LE','H','Rg','Tair','Tsoil10cm_below','Tsoil10cm_above','Tsoil40cm_above','rH','VPD','Ustar','Wind_dir')
+names_output<-c('Year','DoY','Hour','NEE','FCH4','LE','H','Rg','Tair','Tsoil15cm_below','rH','VPD','Ustar','Wind_dir')
 names(output)<-names_output
 
 #Adding the units row
-UNITS<-list('-','-','-','umol_m-2_s-1','umol_m-2_s-1','Wm-2','Wm-2','Wm-2','degC','degC','degC','degC','%','hPa','ms-1','ms-1')
+UNITS<-list('-','-','-','umol_m-2_s-1','umol_m-2_s-1','Wm-2','Wm-2','Wm-2','degC','degC','%','hPa','ms-1','ms-1')
 
 output <- rbind(UNITS,output)
 
@@ -512,7 +546,7 @@ output <- rbind(UNITS,output)
 output[is.na(output)]<--9999
 
 #Saving biomet file:
-write.csv(met,paste('./met_data/Gapfilled_biomet','.csv',sep=''),row.names=FALSE)   
+write.csv(met,paste('/home/otto/data/atmos-flux-data/processed/Gapfilled_biomet','.csv',sep=''),row.names=FALSE)   
 #Saving the file:
-write.table(output, file = paste('./flux_data/REddyProc_input/for_gap_filling_partitioningYoung','.txt',sep=''),row.names=FALSE,sep='\t')   
+write.table(output, file = paste('/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_gap_filling_partitioningATMOS','.txt',sep=''),row.names=FALSE,sep='\t')   
 ```

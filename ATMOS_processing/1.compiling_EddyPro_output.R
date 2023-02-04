@@ -19,7 +19,8 @@ rm(list=ls())
 # set path
 #path <- "./Flux-tower/EP_outputs"
 # path <- "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/EP_outputs"
-path <- "/home/otto/data/atmos-flux-data/processed/20220830/"
+# path <- "/home/otto/data/atmos-flux-data/processed/20220830/"
+path <- "/home/otto/data/atmos-flux-data/output/EP_outputs/"
 
 
 # List only full_output files
@@ -28,10 +29,10 @@ raw.data <- data.frame()
 
 for(i in 1:length(raw.files)) {
 	# Get header names
-	names_temp <- names(read.csv(paste(path,"/",raw.files[i],sep=""),skip=1,sep=",",header=TRUE,dec="."))
+	names_temp <- names(read.csv(paste(path,"/",raw.files[i],sep=""),skip=0,sep=",",header=TRUE,dec="."))
 	
 	# Load data & apply header names
-	temp <- read.csv(paste(path,"/",raw.files[i],sep=""),skip=3,header=FALSE) #skip=3 means skip the first 3 rows of the file
+	temp <- read.csv(paste(path,"/",raw.files[i],sep=""),skip=2,header=FALSE) #skip=3 means skip the first 3 rows of the file
 	names(temp) <- names_temp
 	
 	# Append to file
