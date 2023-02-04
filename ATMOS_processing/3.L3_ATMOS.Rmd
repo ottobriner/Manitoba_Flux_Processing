@@ -1,7 +1,7 @@
 ---
 title: "6.L3"
-author: "Sara Knox"
-date: "04/20/2020"
+author: "Otto Briner"
+date: "02/03/2023"
 output: html_document
 ---
 
@@ -23,13 +23,13 @@ library(Rcpp)
 getwd()
 #dir <- "../Flux-tower/"
 # dir <- "G:/.shortcut-targets-by-id/1txCh9lZ7VGCujXGvBaJCMVnuxT-65q4K/Micromet Lab/Projects/2019-Burns\ Bog 2/Flux-tower"
-dir <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1txCh9lZ7VGCujXGvBaJCMVnuxT-65q4K/Micromet Lab/Projects/2021-Young/Flux-tower"
+dir <- "/home/otto/data/atmos-flux-data"
 knitr::opts_knit$set(root.dir = dir)
 
 ```
 
 ```{r Load data, echo=FALSE, include=FALSE}
-EddyData.F <- fLoadTXTIntoDataframe("./flux_data/REddyProc_input/for_gap_filling_partitioningYoung.txt")
+EddyData.F <- fLoadTXTIntoDataframe("/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_gap_filling_partitioningATMOS.txt")
 ```
 
 ```{r Gap-fill and partition in REddyProc, echo=FALSE, include=FALSE}
@@ -42,8 +42,8 @@ EddyDataWithPosix.F <- fConvertTimeToPosix(EddyData.F, 'YDH',Year.s = 'Year',Day
 
 
 # Initalize R5 reference class sEddyProc for post-processing of eddy data with the variables needed for post-processing later -------------------------------------
-EddyProc.C <- sEddyProc$new('Young-CE', EddyDataWithPosix.F,
-														c("NEE","FCH4","LE","H","Rg","Tair",'Tsoil10cm_below','Tsoil10cm_above','Tsoil40cm_above',"rH","VPD","Ustar","Wind_dir"))
+EddyProc.C <- sEddyProc$new('ATMOS', EddyDataWithPosix.F,
+														c("NEE","FCH4","LE","H","Rg","Tair",'Tsoil15cm_below',"rH","VPD","Ustar","Wind_dir"))
 
 uStarTh <- EddyProc.C$sEstUstarThresholdDistribution(nSample = 100L, probs = c(0.05, 0.5, 0.95)) #added 14/12/2020 M.Nyberg
 uStarTh %>%
@@ -76,13 +76,13 @@ EddyProc.C$sMDSGapFill('Wind_dir', FillAll.b = TRUE)
 
 
 # Gap-filling met data for partitioning  ----------------------------------
-EddyProc.C$sSetLocationInfo(Lat_deg.n = 50.362, Long_deg.n = -100.202, TimeZone_h.n = -6)
+EddyProc.C$sSetLocationInfo(Lat_deg.n = 41.702, Long_deg.n = -87.996, TimeZone_h.n = -6)
 EddyProc.C$sMDSGapFill('Tair', FillAll.b = FALSE)
 EddyProc.C$sMDSGapFill('VPD', FillAll.b = FALSE)
 EddyProc.C$sMDSGapFill('Rg', FillAll.b = FALSE)
-EddyProc.C$sMDSGapFill('Tsoil10cm_below', FillAll.b = FALSE)
-EddyProc.C$sMDSGapFill('Tsoil10cm_above', FillAll.b = FALSE)
-EddyProc.C$sMDSGapFill('Tsoil40cm_above', FillAll.b = FALSE)
+EddyProc.C$sMDSGapFill('Tsoil15cm_below', FillAll.b = FALSE)
+# EddyProc.C$sMDSGapFill('Tsoil10cm_above', FillAll.b = FALSE)
+# EddyProc.C$sMDSGapFill('Tsoil40cm_above', FillAll.b = FALSE)
 
 
 # Apply nighttime gap-filling algorithm -----------------------------------
@@ -97,7 +97,7 @@ names(EddyProc.C$sExportResults()), value = TRUE)
 
 #EddyProc.C$sApplyUStarScen(EddyProc.C$sMRFluxPartition )
 
-EddyProc.C$sPlotFingerprintY('GPP_U50_f', Year = 2021)
+EddyProc.C$sPlotFingerprintY('GPP_U50_f', Year = as.numeric(EddyData.F$Year[1]))
 
 # Apply daytime gap-filling algorithm -----------------------------------
 EddyProc.C$sGLFluxPartition()
@@ -121,7 +121,7 @@ names(FilledEddyData.F)
 
 # daily sums (from REddyProc) - CHECK UNITS!
 
-setwd("/Volumes/GoogleDrive/.shortcut-targets-by-id/1txCh9lZ7VGCujXGvBaJCMVnuxT-65q4K/Micromet Lab/Projects/2021-Young/Flux-tower/flux_data")
+setwd(dir)
 EddyProc.C$sPlotDailySums(Var.s = 'LE_f',Format.s = "png", unit.s = "MJ/m2/day")
 EddyProc.C$sPlotDailySums(Var.s = 'H_f',Format.s = "png", unit.s = "MJ/m2/day")
 EddyProc.C$sPlotDailySums(Var.s = 'NEE_f',Format.s = "png", unit.s = "gC/m2/day")
@@ -138,7 +138,7 @@ EddyProc.C$sPlotDailySums(Var.s = 'Reco_DT',Format.s = "png", unit.s = "gC/m2/da
 
 ```{r Save full REddyPro output, echo=FALSE, include=FALSE}
 
-write_csv(FilledEddyData.F,"/Volumes/GoogleDrive/.shortcut-targets-by-id/1txCh9lZ7VGCujXGvBaJCMVnuxT-65q4K/Micromet Lab/Projects/2021-Young/Flux-tower/flux_data/REddyProc_gapfilled_partition_fulloutputYoung.csv")
+write_csv(FilledEddyData.F,"/home/otto/data/atmos-flux-data/processed/REddyProc_gapfilled_partition_fulloutputATMOS.csv")
 ```
 
 ```{r Save only essential variables, echo=FALSE, include=FALSE}
@@ -156,7 +156,7 @@ essential <- FilledEddyData.F[,which(names(FilledEddyData.F) %in% essential_vari
 
 # variable we need for FCH4 gap-filling
 
-Input <- read.table("/Volumes/GoogleDrive/.shortcut-targets-by-id/1txCh9lZ7VGCujXGvBaJCMVnuxT-65q4K/Micromet Lab/Projects/2021-Young/Flux-tower/flux_data/REddyProc_input/for_gap_filling_partitioningYoung.txt", header = T)
+Input <- read.table("/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_gap_filling_partitioningATMOS.txt", header = T)
 
 # Delete first row that contains units
 Input <- Input[-1, ]
@@ -169,7 +169,7 @@ Input$MM <- (Input$Hour-Input$HH)*60
 Input$TIMESTAMP_END <- make_datetime(Input$Year, 1, Input$DoY, Input$HH, Input$MM)
 
 # Define predictors
-predictors <- c("FCH4", "Ustar","NEE","LE","H","Rg","Tair",'Tsoil10cm_below','Tsoil10cm_above','Tsoil40cm_above',
+predictors <- c("FCH4", "Ustar","NEE","LE","H","Rg","Tair",'Tsoil15cm_below',
                 "rH","VPD","DoY","Wind_dir") 
 
 ML.df <- Input %>% select(predictors)
@@ -261,15 +261,15 @@ for(i in 1:7){
 
 rf_result_df <- data.table::rbindlist(combined_result)
 
-write_csv(rf_result_df,"/Volumes/GoogleDrive/.shortcut-targets-by-id/1txCh9lZ7VGCujXGvBaJCMVnuxT-65q4K/Micromet Lab/Projects/2021-Young/Flux-tower/flux_data/Young_rf_result.csv")
+write_csv(rf_result_df,"/home/otto/data/atmos-flux-data/processed/ATMOS_rf_result.csv")
 
 ```
 
 ```{r Load L2 data, echo=FALSE, include=FALSE}
 
-L2 <- read.csv(paste("/Volumes/GoogleDrive/.shortcut-targets-by-id/1txCh9lZ7VGCujXGvBaJCMVnuxT-65q4K/Micromet Lab/Projects/2021-Young/Flux-tower/flux_data/Young_L2",".csv",sep = ""),sep=",",header=TRUE,dec=".")
+L2 <- read.csv(paste("/home/otto/data/atmos-flux-data/processed/ATMOS_L2",".csv",sep = ""),sep=",",header=TRUE,dec=".")
 
-met <- read.csv('/Volumes/GoogleDrive/.shortcut-targets-by-id/1txCh9lZ7VGCujXGvBaJCMVnuxT-65q4K/Micromet Lab/Projects/2021-Young/Flux-tower/met_data/Gapfilled_biomet.csv')
+met <- read.csv('/home/otto/data/atmos-flux-data/processed/Gapfilled_biomet.csv')
 
 
 
@@ -289,6 +289,6 @@ if (nrow(L2) == nrow(essential)){
 L3 <- merge(L3, met, by = "DATE") 
 
 
-write_csv(L3,"/Volumes/GoogleDrive/.shortcut-targets-by-id/1txCh9lZ7VGCujXGvBaJCMVnuxT-65q4K/Micromet Lab/Projects/2021-Young/Flux-tower/Flux_data/Young_L3.csv")
+write_csv(L3,"/home/otto/data/atmos-flux-data/processed/ATMOS_L3.csv")
 
 ```
