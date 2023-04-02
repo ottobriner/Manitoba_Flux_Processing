@@ -3,10 +3,10 @@ title: "5.L2_filtering"
 author: "Otto Briner"
 date: "`r format(Sys.Date(), '%Y/%m/%d')`"
 knit: (function(inputFile, encoding) { 
-      out_dir <- 'html';
+      out_dir <- 'output';
       rmarkdown::render(inputFile,
                         encoding=encoding, 
-                        output_file=file.path('/home/otto/data/atmos-flux-data/output/', out_dir, 
+                        output_file=file.path('/home/otto/git/Manitoba_Flux_Processing/ATMOS_processing/', out_dir, 
                         paste0(substr(inputFile,nchar(inputFile)-22,nchar(inputFile)-4), '_', Sys.Date(),'.html'))) })
 output: html_document
 ---
@@ -53,23 +53,28 @@ h2o_mean_max <- 2000 #[mmol/m3]
 co2_mean_min <- 12 #[mmol/m3]
 co2_var_max <- 0.2
 co2_flux_max <- 50 #[µmol+1s-1m-2]
-co2_flux_min <- -60 #[µmol+1s-1m-2]
-rssi_77_mean_min <- 20; #[#] 
+co2_flux_min <- -50 #[µmol+1s-1m-2]
+rssi_77_mean_min <- 10; #[#] 
 ch4_mean_min <- 1.7 # [ppm]
-ch4_var_max <- 0.0005
+ch4_var_max <- 0.00002
 ch4_flux_min <- -0.2 #[µmol+1s-1m-2]
 ch4_flux_max <- 0.7 #[µmol+1s-1m-2]
 ustar_max <- 1.2
-wind_max <- 360 #degrees - added 14/12/20 - M.Nyberg
-wind_min <- 0 #degrees - added 14/12/20 - M.Nyberg
+wind_max <- 360 #degrees - added 14/12/20 - M.Nyberg - exclude above
+wind_min <- 0 #degrees - added 14/12/20 - M.Nyberg - exclude below
+wind_pr_min <- 90 #degrees - above is prairie
+wind_pr_max <- 315 #degrees - below is prairie
+wind_fr_min <- wind_pr_max #degrees - above is forest
+wind_fr_max <- wind_pr_min #degrees - below is forest
 L_max <- 10000 # [m] - added 13/08/21 - D. Ng
 L_min <- -10000 # [m] - added 13/08/21 - D. Ng
 
 
 # Plot filtering variable of interest to check values
 plot_ly(data = Data_QAQC, x = ~DATE, y = ~co2_var, name = 'pitch', type = 'scatter', mode = 'line') %>%
- layout(yaxis = list(range = c(-1, 1))) %>% 
-  layout(title = 'CO2, filtered and unfiltered') %>%  
+ layout(yaxis = list(range = c()), 
+        shapes = list(type = "line", y0 = co2_var_max, y1 = co2_var_max, x0 = Data_QAQC$DATE[1], x1 = Data_QAQC$DATE[nrow(Data_QAQC)]),
+        title = 'CO2, filtered and unfiltered') %>%  
   toWebGL()
 ```
 
@@ -87,6 +92,13 @@ Data_QAQC$badm <- ifelse(input$ch4_flux < ch4_flux_min | input$ch4_flux > ch4_fl
 Data_QAQC$badwind <- ifelse(input$wind_dir > wind_max | input$wind_dir < wind_min,1,0) #added 14/12/20 - M.Nyberg
 
 Data_QAQC$badL <- ifelse(input$L > L_max | input$L < L_min,1,0) # Added 13/08/21 - D.Ng
+
+Data_QAQC$wind_pr <- ifelse(input$wind_dir < wind_pr_max | input$wind_dir > wind_pr_min,1,0)
+
+Data_QAQC$wind_fr <- ifelse(input$wind_dir < wind_fr_max | input$wind_dir > wind_fr_min,1,0)
+
+Data_QAQC$wind_dir_ffp <- ifelse(Data_QAQC$wind_pr == 1,yes='prairie',no='forest')
+
 ```
 
 ### CO~2~ Filtering
@@ -110,11 +122,12 @@ plot_ly(data = Data_QAQC, x = ~DATE, y = ~co2_flux, name = 'original', type = 's
 # 2023/01/27 - replacing biomet output compilation from Darian Ng with ATMOS biomet
 
 met <- data.frame()
+fp <- paste("/home/otto/data/atmos-flux-data/output/atmos484_20230328_fluxnet.csv")
 # Get header names
-names_temp <- names(read.csv(paste("/home/otto/data/atmos-flux-data/output/atmos484_20230131_fluxnet.csv")))
+names_temp <- names(read.csv(fp))
 
 #Load data and apply header names
-temp <- read.csv(paste("/home/otto/data/atmos-flux-data/output/atmos484_20230131_fluxnet.csv"))
+temp <- read.csv(fp)
 names(temp) <- names_temp
 
 # Append to file
@@ -174,10 +187,10 @@ beginning<-as.numeric(ts$Timestamp[1])      # Finding number representing the fi
 as.POSIXct(beginning,origin="1970-01-01 00:00:00",tz="Etc/GMT+6") # to confirm that the beginning is the right one
 ts$Timestamp[1]
 
-Ystart<-as.integer(as.character(ts[1,ncol(ts)], "%Y")) # Starting year
-Yend<-as.integer(as.character(ts[nrow(ts),ncol(ts)], "%Y")) # End  year
-Dstart<-as.POSIXlt(ts[1,ncol(ts)])$yday # Starting date
-Dend<-as.POSIXlt(ts[nrow(ts),ncol(ts)])$yday+1 # End date
+# Ystart<-as.integer(as.character(ts[1,ncol(ts)], "%Y")) # Starting year
+# Yend<-as.integer(as.character(ts[nrow(ts),ncol(ts)], "%Y")) # End  year
+# Dstart<-as.POSIXlt(ts[1,ncol(ts)])$yday # Starting date
+# Dend<-as.POSIXlt(ts[nrow(ts),ncol(ts)])$yday+1 # End date
 
 Ndays <- as.numeric((difftime(ts$Timestamp[nrow(ts)],ts$Timestamp[1], "Etc/GMT+6",
                               units = c("days"))), units="days")
@@ -221,21 +234,16 @@ cont.DS[cont.DS == -9999] <- NA
 
 met <- cont.DS
 
-# trimming to dates of flux file
-met <- met[pmatch(Data_QAQC$DATE, met$DATE),]
+met <- met[pmatch(Data_QAQC$DATE, met$DATE),] # trim to dates of flux file
 
-start_rad <- min(which(!is.na(met$NR)))
-end_rad <- max(which(!is.na(met$NR)))
-met <- met[start_rad:end_rad,]
+start_met <- min(which(!is.na(met$Tsoil_mean)))
+end_met <- max(which(!is.na(met$Tsoil_mean)))
+met <- met[start_met:end_met,]
+# met <- met[!is.na(met$Tsoil_mean),]
 
 # fill net radiation forward (assuming only every other half hour is missing)
 met <- met %>%
-  fill(NR,Tsoil_mean)
-
-# DON'T NEED THIS?? NOT USING NET RADIATION
-# trim met and flux data to dates of met tower data (net radiation)
-# met <- met[!is.na(met$NR),]
-met <- met[!is.na(met$Tsoil_mean),]
+  fill(NR)
 
 Data_QAQC <- Data_QAQC[pmatch(met$DATE, Data_QAQC$DATE),]
 
@@ -310,7 +318,7 @@ write.table(output, file = paste('/home/otto/data/atmos-flux-data/processed/REdd
 
 ```{r Ustar filtering in REddyProc, echo=FALSE, warning=FALSE, include=FALSE}
 # Load data
-EddyData.F <- fLoadTXTIntoDataframe("/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_ustar_filtering_2023-03-27.txt")
+EddyData.F <- fLoadTXTIntoDataframe(paste('/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_ustar_filtering_', Sys.Date(), '.txt', sep=''))
 # EddyData.F <- read.csv('./processed/ATMOS_L1.csv')
 
 #Gapfill year and hour NA's
@@ -351,13 +359,12 @@ for (idx in na_idx){
 
 
 # Add time stamp in POSIX time format
-EddyDataWithPosix.F <- fConvertTimeToPosix(EddyData.F, 'YDH',Year = 'Year',Day = 'DoY',Hour = 'Hour') # Year.s, Day.s, Hour.s deprecated
+EddyDataWithPosix.F <- fConvertTimeToPosix(EddyData.F, TFormat = 'YDH',Year = 'Year',Day = 'DoY',Hour = 'Hour') # Year.s, Day.s, Hour.s deprecated
 
 
 
 EddyProc.C <- sEddyProc$new('ATMOS', EddyDataWithPosix.F,
                             c("NEE","Rg","Tair","Ustar"))
-
 
 
 # Single ustar threshold estimate
@@ -453,7 +460,7 @@ plot_ly(data = input, x = ~DATE, y = ~LE, name = 'original', type = 'scatter', m
 
 plot_ly(data = input, x = ~DATE, y = ~co2_flux, name = 'original', type = 'scatter', mode = 'markers', marker = list(size = 3)) %>%
   add_trace(data = Data_QAQC, x = ~DATE, y = ~co2_flux, name = 'retained', mode = 'markers') %>%
-  layout(yaxis = list(range = c(-40, 30)),
+  layout(yaxis = list(range = c()),
          title = 'CO2 retained') %>% 
   toWebGL()
 
@@ -477,34 +484,80 @@ plot_ly(data = input, x = ~DATE, y = ~pitch, name = 'original', type = 'scatter'
 # Wind direction - added 14/12/2020 - M.Nyberg - not sure if this has worked but there are NAs in the Data_QAQC file
 plot_ly(data = input, x = ~DATE, y = ~wind_dir, name = 'original', type = 'scatter', mode = 'line') %>%
   add_trace(data = Data_QAQC, x = ~DATE[badwind == 1], y = ~wind_dir[badwind == 1], name = 'filtered', mode = 'markers') %>% 
-  layout(title = 'wind direction') %>%  
+  layout(title = 'wind direction excluded') %>%  
+  toWebGL()
+```
+
+### Wind Direction Filtering
+```{r Plot wind direction filtering, echo=FALSE, warning=FALSE}
+
+plot_ly(data = input, x = ~DATE, y = ~h2o_flux, name = 'original', type = 'scatter', mode = 'markers', colors = c('yellow', 'red')) %>%
+  add_trace(data = Data_QAQC, x = ~DATE[wind_pr == 1], y = ~h2o_flux[wind_pr == 1], name = 'prairie', mode = 'markers') %>%
+  add_trace(data = Data_QAQC, x = ~DATE[wind_fr == 1], y = ~h2o_flux[wind_fr == 1], name = 'forest', mode = 'markers') %>%
+  # add_trace(data = Data_QAQC, x = ~DATE, y = ~h2o_flux, name = 'h2o_flux', mode = 'markers', color = ~as.factor(wind_dir_ffp)) %>% 
+  layout(yaxis = list(range = c(h2o_flux_min, h2o_flux_max)),
+         title = 'H2O wind direction filtering') %>%
+  toWebGL()
+
+plot_ly(data = input, x = ~DATE, y = ~co2_flux, name = 'original', type = 'scatter', mode = 'markers', colors = c('yellow', 'red')) %>%
+  add_trace(data = Data_QAQC, x = ~DATE[wind_pr == 1], y = ~co2_flux[wind_pr == 1], name = 'prairie', mode = 'markers') %>%
+  add_trace(data = Data_QAQC, x = ~DATE[wind_fr == 1], y = ~co2_flux[wind_fr == 1], name = 'forest', mode = 'markers') %>%
+  # add_trace(data = Data_QAQC, x = ~DATE, y = ~co2_flux, name = 'co2_flux', mode = 'markers', color = ~as.factor(wind_dir_ffp)) %>% 
+  layout(yaxis = list(range = c(co2_flux_min, co2_flux_max)),
+         title = 'CO2 wind direction filtering') %>%
+  toWebGL()
+
+plot_ly(data = input, x = ~DATE, y = ~ch4_flux, name = 'original', type = 'scatter', mode = 'markers', colors = c('pink', 'green')) %>%
+  add_trace(data = Data_QAQC, x = ~DATE[wind_pr == 1], y = ~ch4_flux[wind_pr == 1], name = 'prairie', mode = 'markers') %>%
+  add_trace(data = Data_QAQC, x = ~DATE[wind_fr == 1], y = ~ch4_flux[wind_fr == 1], name = 'forest', mode = 'markers') %>%
+  layout(title = 'CH4 wind direction filtering') %>%
   toWebGL()
 ```
 
 ### Variance Filtering
-```{r Plot variances, echo=FALSE}
+```{r Plot variances, echo=FALSE, warning=FALSE}
 # Variances
 plot_ly(data = input, x = ~DATE, y = ~ts_var, name = 'original', type = 'scatter', mode = 'line') %>%
-  add_trace(data = Data_QAQC, x = ~DATE[ts_var > ts_var_max], y = ~ts_var[ts_var > ts_var_max], name = 'filtered', mode = 'markers') %>% 
-  layout(title = 'T variance') %>%  
+  add_trace(data = Data_QAQC, x = ~DATE[ts_var > ts_var_max], y = ~ts_var[ts_var > ts_var_max], name = 'filtered', mode = 'markers') %>%
+  layout(title = 'T variance') %>%
   toWebGL()
+
+# plot_ly(data = input, x = ~DATE, y = ~ts_var, name = 'original', type = 'histogram', mode = 'line') %>%
+#   add_trace(data = Data_QAQC, x = ~DATE[ts_var > ts_var_max], y = ~ts_var[ts_var > ts_var_max], name = 'filtered', mode = 'markers') %>%
+#   layout(title = 'T variance') %>%
+#   toWebGL()
 
 plot_ly(data = input, x = ~DATE, y = ~h2o_var, name = 'original', type = 'scatter', mode = 'line') %>%
   add_trace(data = Data_QAQC, x = ~DATE[h2o_var > h2o_var_max], y = ~h2o_var[h2o_var > h2o_var_max], name = 'filtered', mode = 'markers') %>% 
   layout(title = 'h2o variance') %>%  
   toWebGL()
 
+# plot_ly(data = input, x = ~DATE, y = ~h2o_var, name = 'original', type = 'histogram', mode = 'line') %>%
+#   add_trace(data = Data_QAQC, x = ~DATE[h2o_var > h2o_var_max], y = ~h2o_var[h2o_var > h2o_var_max], name = 'filtered', mode = 'markers') %>% 
+#   layout(title = 'h2o variance') %>%  
+#   toWebGL()
+
 plot_ly(data = input, x = ~DATE, y = ~co2_var, name = 'original', type = 'scatter', mode = 'line') %>%
   add_trace(data = Data_QAQC, x = ~DATE[co2_var > co2_var_max], y = ~co2_var[co2_var > co2_var_max], name = 'filtered', mode = 'markers') %>%
-  layout(yaxis = list(range = c(-100,10000)),
-         title = 'co2 variance') %>% 
+  layout(title = 'co2 variance') %>% 
   toWebGL()
+
+# plot_ly(data = input, x = ~DATE, y = ~co2_var, name = 'original', type = 'histogram', mode = 'line') %>%
+#   add_trace(data = Data_QAQC, x = ~DATE[co2_var > co2_var_max], y = ~co2_var[co2_var > co2_var_max], name = 'filtered', mode = 'markers') %>%
+#   layout(title = 'co2 variance') %>% 
+#   toWebGL()
 
 plot_ly(data = input, x = ~DATE, y = ~ch4_var, name = 'original', type = 'scatter', mode = 'line') %>%
   add_trace(data = Data_QAQC, x = ~DATE[ch4_var > ch4_var_max], y = ~ch4_var[ch4_var > ch4_var_max], name = 'filtered', mode = 'markers') %>%
-  layout(yaxis = list(range = c(-1,1)),
+  layout(yaxis = list(range = c(-0.0001,0.0001)),
          title = 'ch4 variance') %>% 
   toWebGL()
+
+# plot_ly(data = input, x = ~DATE, y = ~ch4_var, name = 'original', type = 'histogram', mode = 'line') %>%
+#   add_trace(data = Data_QAQC, x = ~DATE[ch4_var > ch4_var_max], y = ~ch4_var[ch4_var > ch4_var_max], name = 'filtered', mode = 'markers') %>%
+#   layout(yaxis = list(range = c(-0.0001,0.0001)),
+#          title = 'ch4 variance') %>% 
+#   toWebGL()
 ```
 
 ```{r Plot energy balance closure, echo=FALSE, warning=FALSE}
@@ -549,6 +602,10 @@ plot_ly(data = input, x = ~DATE, y = ~ch4_var, name = 'original', type = 'scatte
 # # Compute closure
 # Eclosure = sum(Ebal_numerator_diurn)/sum(Ebal_denominator_diurn);
 # mtext(paste('Diel Avg. Closure = ', round(Eclosure,2)),side=3,line=-4,at=200,cex=0.9)
+```
+
+```{r Compute data coverage, echo=FALSE, warning=FALSE}
+Data_coverage = colSums(!is.na(Data_QAQC[c('co2_flux', 'ch4_flux')])) / nrow(Data_QAQC)
 ```
 
 ```{r Save L2 output, echo=FALSE, warning=FALSE}

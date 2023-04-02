@@ -1,7 +1,14 @@
 ---
 title: "6.L3"
 author: "Otto Briner"
-date: "02/03/2023"
+date: "`r format(Sys.Date(), '%Y/%m/%d')`"
+knit: (function(inputFile, encoding) { 
+      out_dir <- 'output';
+      rmarkdown::render(inputFile,
+                        encoding=encoding, 
+                        output_file=file.path('/home/otto/git/Manitoba_Flux_Processing/ATMOS_processing/', out_dir, 
+                        paste0(substr(inputFile,nchar(inputFile)-14,nchar(inputFile)-4), '_', Sys.Date(),'.html'))) })
+
 output: html_document
 ---
 
@@ -24,12 +31,13 @@ getwd()
 #dir <- "../Flux-tower/"
 # dir <- "G:/.shortcut-targets-by-id/1txCh9lZ7VGCujXGvBaJCMVnuxT-65q4K/Micromet Lab/Projects/2019-Burns\ Bog 2/Flux-tower"
 dir <- "/home/otto/data/atmos-flux-data"
+file_suffix = ''
 knitr::opts_knit$set(root.dir = dir)
 
 ```
 
 ```{r Load data, echo=FALSE, include=FALSE}
-EddyData.F <- fLoadTXTIntoDataframe("/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_gap_filling_partitioningATMOS.txt")
+EddyData.F <- fLoadTXTIntoDataframe(paste0("/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_gap_filling_partitioning_ATMOS_2023-03-31.txt"))
 ```
 
 ```{r Gap-fill and partition in REddyProc, echo=FALSE, include=FALSE}
@@ -98,7 +106,9 @@ names(EddyProc.C$sExportResults()), value = TRUE)
 #EddyProc.C$sApplyUStarScen(EddyProc.C$sMRFluxPartition )
 
 EddyProc.C$sPlotFingerprintY('GPP_U50_f', Year = as.numeric(EddyData.F$Year[1]))
+```
 
+```{r Gap-fill and partition in REddyProc_1, echo=FALSE, include=FALSE}
 # Apply daytime gap-filling algorithm -----------------------------------
 EddyProc.C$sGLFluxPartition()
 
@@ -138,7 +148,7 @@ EddyProc.C$sPlotDailySums(Var.s = 'Reco_DT',Format.s = "png", unit.s = "gC/m2/da
 
 ```{r Save full REddyPro output, echo=FALSE, include=FALSE}
 
-write_csv(FilledEddyData.F,"/home/otto/data/atmos-flux-data/processed/REddyProc_gapfilled_partition_fulloutputATMOS.csv")
+write_csv(FilledEddyData.F,paste0("/home/otto/data/atmos-flux-data/processed/REddyProc_gapfilled_partition_fulloutput_ATMOS_", Sys.Date(), file_suffix, ".csv"))
 ```
 
 ```{r Save only essential variables, echo=FALSE, include=FALSE}
@@ -153,128 +163,128 @@ essential <- FilledEddyData.F[,which(names(FilledEddyData.F) %in% essential_vari
 ```
 
 ```{r gap-fill FCH4 using random forest from Kim et al. 2019, echo=FALSE, include=FALSE}
-
-# variable we need for FCH4 gap-filling
-
-Input <- read.table("/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_gap_filling_partitioningATMOS.txt", header = T)
-
-# Delete first row that contains units
-Input <- Input[-1, ]
-Input <- data.frame(lapply(Input, function(x) as.numeric(as.character(x))))
-
-Input$HH <- floor(Input$Hour)
-Input$MM <- (Input$Hour-Input$HH)*60
-
-# Create time stamp
-Input$TIMESTAMP_END <- make_datetime(Input$Year, 1, Input$DoY, Input$HH, Input$MM)
-
-# Define predictors
-predictors <- c("FCH4", "Ustar","NEE","LE","H","Rg","Tair",'Tsoil15cm_below',
-                "rH","VPD","DoY","Wind_dir") 
-
-ML.df <- Input %>% select(predictors)
-
-# Replace all -9999 with NA
-ML.df[ML.df == -9999] <- NA
-
-# Add sine and cosine functions
-ML.df$s <- sin((ML.df$DoY-1)/365*2*pi)
-ML.df$c <- cos((ML.df$DoY-1)/365*2*pi)
-
-# period when FCH4 is not missing
-wm_only <- ML.df[!is.na(ML.df$FCH4), ]
-
-############### Random forest run 20x ###############
-
-#Add parallel processing for the fast processing if you want to
-library(parallel)
-library(doParallel)
-
-combined_result <- list()
-
-for(i in 1:7){
-  start_time <- Sys.time()
-  # setting seed
-  set.seed(i)
-  train_rows <- sample(1:nrow(wm_only), 0.75*nrow(wm_only))
-  # select the training set
-  train_set <- wm_only %>% slice(train_rows)
-  # select the validation set
-  test_set <- anti_join(wm_only, train_set)
-  #### option 1. random forest model with mtry tuning
-  #cluster <- makeCluster(6)
-  cluster <- parallel::makeCluster(10, setup_timeout = 0.5)
-  registerDoParallel(cluster)
-  RF_FCH4 <- train(FCH4 ~ ., data = train_set[,predictors],
-   								 method = "rf",
-   								 preProcess = c("medianImpute"),                #impute missing met data with median
-   								 trControl=trainControl(method = "cv",   #three-fold cross-validation for model parameters 3 times
-   								 											number = 3),
-   								 na.action = na.pass,
-   								 # allowParallel=FALSE, # This requires parallel packages. Otherwise you can choose FALSE.
-   								 ntree=400, # can generate more trees
-   								 importance = TRUE)
-  
-  RF_FCH4$bestTune
-  RF_FCH4$results
-  
-  ############### Results
-  # variable importance
-  plot(varImp(RF_FCH4, scale = FALSE), main="variable importance")
-  
-  #generate FCH4_rf predictions for testset
-  test_set$FCH4_rf <- predict(RF_FCH4, test_set, na.action = na.pass)
-  regrRF <- lm(test_set$FCH4_rf ~ test_set$FCH4); 
-  print(summary(regrRF))
-  ggplot(test_set, aes(x=FCH4, y=FCH4_rf)) + geom_abline(slope = 1, intercept = 0)+
-    geom_point() + geom_smooth(method = "lm") + ggtitle("testset")
-  
-  # whole dataset
-  result <- data.frame(FCH4 = ML.df$FCH4) # you can add datetime column here if you want to.
-  result$FCH4_RF_model <- predict(RF_FCH4, ML.df, na.action = na.pass) # FCH4 RF model
-  result$FCH4_RF_filled <- ifelse(is.na(result$FCH4),result$FCH4_RF_model,result$FCH4) # gap-filled column (true value when it is, gap-filled value when missing)
-  result$FCH4_RF_residual <- ifelse(is.na(result$FCH4),NA,result$FCH4_RF_model - result$FCH4) # residual (model - obs). can be used for random uncertainty analysis
-  
-  # time series
-  result$DateTime <- Input$TIMESTAMP_END
-  
-  result %>% ggplot(aes(DateTime,FCH4)) + geom_point() + 
-    theme_bw() + ylab(expression(paste("FCH4 (umol ", m^-2,s^-1,")"))) %>% 
-    print()
-  result %>% ggplot(aes(DateTime,FCH4_RF_filled)) + geom_point(color="red",alpha=0.5) +
-    geom_point(aes(DateTime,FCH4),color="black")+
-    theme_bw() + ylab(expression(paste("FCH4 (umol ", m^-2,s^-1,")"))) %>% 
-    print()
-  
-  # whole data comparison
-  print(ggplot(result, aes(x = FCH4, y =FCH4_RF_model)) + geom_abline(slope = 1, intercept = 0)+
-    geom_point() + geom_smooth(method = "lm") + ggtitle("whole dataset"))
-  regrRF_whole <- lm(result$FCH4_RF_model ~ result$FCH4);
-  print(summary(regrRF_whole))
-  
-  
-  result$iteration <- i 
-  combined_result[[i]] <- result
-  end_time <- Sys.time()
-  end_time - start_time
-}
-
-rf_result_df <- data.table::rbindlist(combined_result)
-
-write_csv(rf_result_df,"/home/otto/data/atmos-flux-data/processed/ATMOS_rf_result.csv")
+# 
+# # variable we need for FCH4 gap-filling
+# 
+# Input <- read.table("/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_gap_filling_partitioningATMOS_2023-02-06.txt", header = T)
+# 
+# # Delete first row that contains units
+# Input <- Input[-1, ]
+# Input <- data.frame(lapply(Input, function(x) as.numeric(as.character(x))))
+# 
+# Input$HH <- floor(Input$Hour)
+# Input$MM <- (Input$Hour-Input$HH)*60
+# 
+# # Create time stamp
+# Input$TIMESTAMP_END <- make_datetime(Input$Year, 1, Input$DoY, Input$HH, Input$MM)
+# 
+# # Define predictors
+# predictors <- c("FCH4", "Ustar","NEE","LE","H","Rg","Tair",'Tsoil15cm_below',
+#                 "rH","VPD","DoY","Wind_dir") 
+# 
+# ML.df <- Input %>% select(predictors)
+# 
+# # Replace all -9999 with NA
+# ML.df[ML.df == -9999] <- NA
+# 
+# # Add sine and cosine functions
+# ML.df$s <- sin((ML.df$DoY-1)/365*2*pi)
+# ML.df$c <- cos((ML.df$DoY-1)/365*2*pi)
+# 
+# # period when FCH4 is not missing
+# wm_only <- ML.df[!is.na(ML.df$FCH4), ]
+# 
+# ############### Random forest run 20x ###############
+# 
+# #Add parallel processing for the fast processing if you want to
+# library(parallel)
+# library(doParallel)
+# 
+# combined_result <- list()
+# 
+# for(i in 1:7){
+#   start_time <- Sys.time()
+#   # setting seed
+#   set.seed(i)
+#   train_rows <- sample(1:nrow(wm_only), 0.75*nrow(wm_only))
+#   # select the training set
+#   train_set <- wm_only %>% slice(train_rows)
+#   # select the validation set
+#   test_set <- anti_join(wm_only, train_set)
+#   #### option 1. random forest model with mtry tuning
+#   #cluster <- makeCluster(6)
+#   cluster <- parallel::makeCluster(10, setup_timeout = 0.5)
+#   registerDoParallel(cluster)
+#   RF_FCH4 <- train(FCH4 ~ ., data = train_set[,predictors],
+#    								 method = "rf",
+#    								 preProcess = c("medianImpute"),                #impute missing met data with median
+#    								 trControl=trainControl(method = "cv",   #three-fold cross-validation for model parameters 3 times
+#    								 											number = 3),
+#    								 na.action = na.pass,
+#    								 # allowParallel=FALSE, # This requires parallel packages. Otherwise you can choose FALSE.
+#    								 ntree=400, # can generate more trees
+#    								 importance = TRUE)
+#   
+#   RF_FCH4$bestTune
+#   RF_FCH4$results
+#   
+#   ############### Results
+#   # variable importance
+#   plot(varImp(RF_FCH4, scale = FALSE), main="variable importance")
+#   
+#   #generate FCH4_rf predictions for testset
+#   test_set$FCH4_rf <- predict(RF_FCH4, test_set, na.action = na.pass)
+#   regrRF <- lm(test_set$FCH4_rf ~ test_set$FCH4); 
+#   print(summary(regrRF))
+#   ggplot(test_set, aes(x=FCH4, y=FCH4_rf)) + geom_abline(slope = 1, intercept = 0)+
+#     geom_point() + geom_smooth(method = "lm") + ggtitle("testset")
+#   
+#   # whole dataset
+#   result <- data.frame(FCH4 = ML.df$FCH4) # you can add datetime column here if you want to.
+#   result$FCH4_RF_model <- predict(RF_FCH4, ML.df, na.action = na.pass) # FCH4 RF model
+#   result$FCH4_RF_filled <- ifelse(is.na(result$FCH4),result$FCH4_RF_model,result$FCH4) # gap-filled column (true value when it is, gap-filled value when missing)
+#   result$FCH4_RF_residual <- ifelse(is.na(result$FCH4),NA,result$FCH4_RF_model - result$FCH4) # residual (model - obs). can be used for random uncertainty analysis
+#   
+#   # time series
+#   result$DateTime <- Input$TIMESTAMP_END
+#   
+#   result %>% ggplot(aes(DateTime,FCH4)) + geom_point() + 
+#     theme_bw() + ylab(expression(paste("FCH4 (umol ", m^-2,s^-1,")"))) %>% 
+#     print()
+#   result %>% ggplot(aes(DateTime,FCH4_RF_filled)) + geom_point(color="red",alpha=0.5) +
+#     geom_point(aes(DateTime,FCH4),color="black")+
+#     theme_bw() + ylab(expression(paste("FCH4 (umol ", m^-2,s^-1,")"))) %>% 
+#     print()
+#   
+#   # whole data comparison
+#   print(ggplot(result, aes(x = FCH4, y =FCH4_RF_model)) + geom_abline(slope = 1, intercept = 0)+
+#     geom_point() + geom_smooth(method = "lm") + ggtitle("whole dataset"))
+#   regrRF_whole <- lm(result$FCH4_RF_model ~ result$FCH4);
+#   print(summary(regrRF_whole))
+#   
+#   
+#   result$iteration <- i 
+#   combined_result[[i]] <- result
+#   end_time <- Sys.time()
+#   end_time - start_time
+# }
+# 
+# rf_result_df <- data.table::rbindlist(combined_result)
+# 
+# write_csv(rf_result_df,paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_rf_result", Sys.Date(), ".csv"))
 
 ```
 
 ```{r Load L2 data, echo=FALSE, include=FALSE}
 
-L2 <- read.csv(paste("/home/otto/data/atmos-flux-data/processed/ATMOS_L2",".csv",sep = ""),sep=",",header=TRUE,dec=".")
+L2 <- read.csv(paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L2_2023-03-31", file_suffix, ".csv"))
 
-met <- read.csv('/home/otto/data/atmos-flux-data/processed/Gapfilled_biomet.csv')
+met <- read.csv(paste0('/home/otto/data/atmos-flux-data/processed/Gapfilled_biomet_2023-03-31', file_suffix, '.csv'))
 
 
 
 # First, RF CH4 gap-filled data (figure out uncertainty for RF gap-filling)
-L2$FCH4_gf_RF <- result$FCH4_RF_filled
+# L2$FCH4_gf_RF <- result$FCH4_RF_filled
 
 # REddyProc data 
 head(L2)
@@ -289,6 +299,20 @@ if (nrow(L2) == nrow(essential)){
 L3 <- merge(L3, met, by = "DATE") 
 
 
-write_csv(L3,"/home/otto/data/atmos-flux-data/processed/ATMOS_L3.csv")
+write_csv(L3,paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L3_", Sys.Date(), file_suffix, ".csv"))
 
 ```
+
+```{r format for FLUXNET, echo=FALSE, include=FALSE}
+
+L3 <- read.csv(paste0('/home/otto/data/atmos-flux-data/processed/ATMOS_L3_', Sys.Date(), file_suffix, '.csv'))
+
+write_csv(L3,paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L3_", Sys.Date(), file_suffix, "_full_output.csv"))
+
+L3[is.na(L3)] = -9999
+
+write_csv(L3, paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L3_", Sys.Date(), file_suffix, "_fluxnet.csv"))
+
+```
+
+
