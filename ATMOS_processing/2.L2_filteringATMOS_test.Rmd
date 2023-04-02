@@ -189,11 +189,16 @@ met$Timestamp <- paste(met$date, met$time)
 
 met$Timestamp<-as.POSIXct(paste(met$date, met$time), format="%Y-%m-%d %H%M", tz = "Etc/GMT+6")
 # met$Timestamp <- as.POSIXct(met$date, tz = "Etc/GMT+6")
-met$Timestamp
+
+# Replace after 2022-11-30 23:30:00 with new timestamp
+newTimestamp <- seq(from = as.POSIXct('2022-12-01 00:00:00 -06', tz = "Etc/GMT+6"), length = (48*(31+31+28)), by=difftime(met$Timestamp[2],met$Timestamp[1], "Etc/GMT+6"))
+istart <- which(is.na(met$Timestamp))[1]-1
+
+met$Timestamp[istart:(istart + length(newTimestamp) - 1)] <- newTimestamp
 
 # Hour and Year columns for REddyProc ustar filtering
-met$Hour <- as.numeric(met$hour) + (as.numeric(met$min) / 60)
-met$Year <- as.numeric(met$Year)
+met$Hour <- as.numeric(str_sub(met$Timestamp, 12, 13)) + (as.numeric(str_sub(met$Timestamp, 15, 16)) / 60)
+met$Year <- as.numeric(str_sub(met$Timestamp, 1, 4))
 
 # Creating columns for new & renamed variables: net radiation, saturated vapour pressure (es), vpd. --> Missing Soil Heat Flux, so can't derive soil heat flux (G), & available energy (ae),
 met$NR <- met$RN # is radiation from met tower in Wm-2?
