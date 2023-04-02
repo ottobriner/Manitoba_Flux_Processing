@@ -133,28 +133,88 @@ names(temp) <- names_temp
 
 # Append to file
 met <- smartbind(met, temp, fill="NA")
-# met <- met[(0:(nrow(met)-1)),] # last row is all NA
 
-# met$Timestamp<-as.POSIXct(paste(met$date, met$time), format="%Y-%m-%d %H:%M", tz = "Etc/GMT+8")
-met$Timestamp <- as.POSIXct(met$date, tz = "Etc/GMT+6")
+# Parse Zentra timestamp
+met$time <- str_pad(met$Time, 4, 'left', pad = '0')
+met$hour <- str_sub(met$time, 0, 2)
+met$min <- str_sub(met$time, 3, 5)
+met <- met %>% 
+  fill(hour, .direction = 'up') %>% 
+  mutate(hour = str_replace_all(hour, '24', '00'),
+         min = replace_na(min, '00'))
+met$time <- paste0(met$hour, met$min)
 
-# Formatting met date as yyyy-mm-dd hh:mm:ss to include time and adding "Year" and "hour" columns
-for(i in 1:length(met$date)) {
-  time <- met$time[i]
-  met$date[i] <- paste(met$date[i],time)
-  
-  Yr <- as.numeric(substr(met$date[i],start=1,stop=4))
-  Hr <- as.numeric(substr(met$date[i],start=12, stop = 13))
-  
-  Min <- substr(met$date[i],start=15,stop=16)
-  if (Min == "30") {
-    Hr <- Hr+0.5
-  } 
-  
-  met$year[i] <- Yr
-  met$hour[i] <- Hr
-  
-}
+met$Hour <- as.numeric(met$hour) + (as.numeric(met$min) / 60)
+met$Year <- as.integer(met$Year + 2000)
+
+met$DOM <- str_pad(met$DOM, 2, 'left', pad = '0')
+met$Month <- str_pad(met$Month, 2, 'left', pad = '0')
+met <- met %>% 
+  fill(Year, Month, DOM)
+met$date <- paste0(met$Year, '-', met$Month, '-', met$DOM)
+
+## dates are still off - midnight is still the previous day - maybe the pmatch will still work
+# for(i in 1:length(met$date)){
+#   if (met$date[i]=='2022-01-31' && met$time[i]=='0000'){
+#     met$date[i]='2022-02-01'
+#   }
+#   if (met$date[i]=='2022-02-28' && met$time[i]=='0000'){
+#     met$date[i]='2022-03-01'
+#   }
+#   if (met$date[i]=='2022-03-31' && met$time[i]=='0000'){
+#     met$date[i]='2022-04-01'
+#   }
+#   if (met$date[i]=='2022-04-30' && met$time[i]=='0000'){
+#     met$date[i]='2022-05-01'
+#   }
+#   if (met$date[i]=='2022-05-31' && met$time[i]=='0000'){
+#     met$date[i]='2022-06-01'
+#   }
+#   if (met$date[i]=='2022-06-30' && met$time[i]=='0000'){
+#     met$date[i]='2022-07-01'
+#   }
+#   if (met$date[i]=='2022-07-31' && met$time[i]=='0000'){
+#     met$date[i]='2022-08-01'
+#   }
+#   if (met$date[i]=='2022-08-31' && met$time[i]=='0000'){
+#     met$date[i]='2022-09-01'
+#   }
+#   if (met$date[i]=='2022-09-30' && met$time[i]=='0000'){
+#     met$date[i]='2022-10-01'
+#   }
+#   if (met$date[i]=='2022-10-31' && met$time[i]=='0000'){
+#     met$date[i]='2022-11-01'
+#   }
+#   if (met$date[i]=='2022-11-30' && met$time[i]=='0000'){
+#     met$date[i]='2022-12-01'
+#   }
+#   if (met$date[i]=='2022-12-31' && met$time[i]=='0000'){
+#     met$date[i]='2023-01-01'
+#   }
+# 
+# }
+
+met$Timestamp<-as.POSIXct(paste(met$date, met$time), format="%Y-%m-%d %H%M", tz = "Etc/GMT+6")
+# met$Timestamp <- as.POSIXct(met$date, tz = "Etc/GMT+6")
+met$Timestamp
+
+# # Formatting met date as yyyy-mm-dd hh:mm:ss to include time and adding "Year" and "hour" columns
+# for(i in 1:length(met$date)) {
+#   time <- met$time[i]
+#   met$date[i] <- paste(met$date[i],time)
+#   
+#   Yr <- as.numeric(substr(met$date[i],start=1,stop=4))
+#   Hr <- as.numeric(substr(met$date[i],start=12, stop = 13))
+#   
+#   Min <- substr(met$date[i],start=15,stop=16)
+#   if (Min == "30") {
+#     Hr <- Hr+0.5
+#   } 
+#   
+#   met$year[i] <- Yr
+#   met$hour[i] <- Hr
+#   
+# }
 
 # Creating columns for new & renamed variables: net radiation, saturated vapour pressure (es), vpd. --> Missing Soil Heat Flux, so can't derive soil heat flux (G), & available energy (ae),
 met$NR <- met$RN # is radiation from met tower in Wm-2?
