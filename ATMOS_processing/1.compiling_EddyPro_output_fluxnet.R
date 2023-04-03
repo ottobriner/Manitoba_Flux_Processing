@@ -23,26 +23,26 @@ path <- "/home/otto/data/atmos-flux-data/processedEP/EP_outputs/"
 # path <- "/home/otto/data/atmos-flux-data/output/EP_outputs/"
 
 
-# List only full_output files
-raw.files <- list.files(path = path, pattern = "full_output", recursive = TRUE)
+# List only fluxnet files
+raw.files <- list.files(path = path, pattern = "fluxnet", recursive = TRUE)
 raw.data <- data.frame()
 
 for(i in 1:length(raw.files)) {
-	# Get header names
-  names_temp <- names(read.csv(paste(path,"/",raw.files[i],sep=""),skip=1,sep=",",header=TRUE,dec="."))
-	
-	# Load data & apply header names
-	temp <- read.csv(paste(path,"/",raw.files[i],sep=""),skip=3,header=FALSE) #skip=3 means skip the first 3 rows of the file
-	names(temp) <- names_temp
-	
-	# Append to file
-	raw.data <- smartbind(raw.data,temp, fill = "NA")
+  # Get header names
+  names_temp <- names(read.csv(paste(path,"/",raw.files[i],sep=""),skip=0,sep=",",header=TRUE,dec="."))
+  
+  # Load data & apply header names
+  temp <- read.csv(paste(path,"/",raw.files[i],sep=""),skip=1,header=FALSE) #skip=3 means skip the first 3 rows of the file
+  names(temp) <- names_temp
+  
+  # Append to file
+  raw.data <- smartbind(raw.data,temp, fill = "NA")
 }
 
 ####
 # 2. Creating a Timestamp with date and time variable to order the data by date-time
 ###
-raw.data$Timestamp<-as.POSIXct(paste(raw.data$date, raw.data$time), format="%Y-%m-%d %H:%M", tz = "Etc/GMT+6")
+raw.data$Timestamp<-as.POSIXct(paste(raw.data$TIMESTAMP_END), format="%Y%m%d%H%M", tz = "Etc/GMT+6")
 
 data.ordered<-raw.data[order(raw.data$Timestamp, decreasing = FALSE ),]
 
@@ -74,7 +74,7 @@ Dstart
 Dend
 
 Ndays <- as.numeric((difftime(ts$Timestamp[nrow(ts)],ts$Timestamp[1], "Etc/GMT+6",
-															units = c("days"))), units="days")
+                              units = c("days"))), units="days")
 Ndays
 
 #To generate a serie of all minutes in a day:
@@ -98,8 +98,8 @@ cont.DS$DATE<-DATE
 
 #FILLING THE NEW DATAFRAME WITH DATA FROM THE ORIGINAL DATA FRAME 
 for(i in 2:ncol(cont.DS)){  
-	cont.DS[,i]<-ts[pmatch(cont.DS$DATE,ts$Timestamp),i-1]  
-	#pmatch look for the observation rows when time columns of both (old and new) dataframes match
+  cont.DS[,i]<-ts[pmatch(cont.DS$DATE,ts$Timestamp),i-1]  
+  #pmatch look for the observation rows when time columns of both (old and new) dataframes match
 } 
 
 ####
@@ -112,14 +112,14 @@ date_loca <- ymd_hms(cont.DS$DATE, tz="America/Chicago")
 date_local<-as.POSIXlt(date_loca,tz="America/Chicago")
 
 for (i in 1:nrow(cont.DS)){
-	cont.DS$Year_local[i]<-as.integer(as.character(date_local[i],"%Y"))
-	cont.DS$jday_local[i]<-as.POSIXlt(date_local[i])$yday+1
-	cont.DS$month_local[i]<-as.numeric(format(date_local[i],"%m"))
-	cont.DS$hour_local[i]<-as.integer(as.character(date_local[i],"%H"))
-	cont.DS$min_local[i]<-sprintf("%02s",as.integer(as.character(date_local[i],"%M")))  #sprintf function converts 0 in 00 to be pasted with hour to generate local time
-	cont.DS$time_local[i]<-paste(cont.DS$hour_local[i],cont.DS$min_local[i],sep=":")
-	day_portion<-ifelse(cont.DS$min_local[i]=="00",as.numeric(cont.DS$hour_local[i]),as.numeric(cont.DS$hour_local[i])+0.5)
-	cont.DS$DOY_local[i]<-cont.DS$jday_local[i]+(day_portion*2*0.02)
+  cont.DS$Year_local[i]<-as.integer(as.character(date_local[i],"%Y"))
+  cont.DS$jday_local[i]<-as.POSIXlt(date_local[i])$yday+1
+  cont.DS$month_local[i]<-as.numeric(format(date_local[i],"%m"))
+  cont.DS$hour_local[i]<-as.integer(as.character(date_local[i],"%H"))
+  cont.DS$min_local[i]<-sprintf("%02s",as.integer(as.character(date_local[i],"%M")))  #sprintf function converts 0 in 00 to be pasted with hour to generate local time
+  cont.DS$time_local[i]<-paste(cont.DS$hour_local[i],cont.DS$min_local[i],sep=":")
+  day_portion<-ifelse(cont.DS$min_local[i]=="00",as.numeric(cont.DS$hour_local[i]),as.numeric(cont.DS$hour_local[i])+0.5)
+  cont.DS$DOY_local[i]<-cont.DS$jday_local[i]+(day_portion*2*0.02)
 }
 
 
@@ -130,12 +130,12 @@ cont.DS[cont.DS == -9999] <- NA
 
 ## Plot key variables
 plot_ly(data = cont.DS, x = ~DATE, y = ~LE, name = 'LE', type = 'scatter', mode = 'lines') %>%
-	add_trace(y = ~H, name = 'H', mode = 'lines') %>% 
+  add_trace(y = ~H, name = 'H', mode = 'lines') %>% 
   toWebGL()
 
-plot_ly(data = cont.DS, x = ~DATE, y = ~ch4_flux, name = 'CH4', type = 'scatter', mode = 'lines') %>% 
+plot_ly(data = cont.DS, x = ~DATE, y = ~FCH4, name = 'CH4', type = 'scatter', mode = 'lines') %>% 
   toWebGL()
-plot_ly(data = cont.DS, x = ~DATE, y = ~co2_flux, name = 'CO2', type = 'scatter', mode = 'lines') %>% 
+plot_ly(data = cont.DS, x = ~DATE, y = ~FC, name = 'CO2', type = 'scatter', mode = 'lines') %>% 
   toWebGL()
 # plot_ly(data = cont.DS, x = ~DATE, y = ~SWIN, name = 'SWIN', type = 'scatter', mode = 'markers') %>%
 #   toWebGL()
@@ -149,6 +149,6 @@ cont.DS$date <- as.Date(cont.DS$DATE) #already got this one from the answers abo
 cont.DS$time <- format(as.POSIXct(cont.DS$DATE) ,format = "%H:%M") 
 
 
-write.csv(cont.DS,paste('/home/otto/data/atmos-flux-data/processed/ATMOS_L1_', Sys.Date(), '.csv',sep =''),row.names=FALSE)
+write.csv(cont.DS,paste('/home/otto/data/atmos-flux-data/processed/ATMOS_L1_fluxnet_', Sys.Date(), '.csv',sep =''),row.names=FALSE)
 
 

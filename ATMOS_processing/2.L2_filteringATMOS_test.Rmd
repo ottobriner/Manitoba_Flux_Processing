@@ -31,10 +31,14 @@ knitr::opts_knit$set(root.dir = dir)
 ```
 
 ```{r Load non-filtered data, echo=FALSE, include=FALSE}
+# read fluxnet
+input<-read.csv(paste('./processed/ATMOS_L1_fluxnet_2023-04-02.csv',sep=''))
+input$DATE<-as.POSIXct(input$DATE,format="%Y-%m-%d %H:%M:%S", tz = "Etc/GMT+6")
+fluxnet<-input
+
+# read full_output
 input<-read.csv(paste('./processed/ATMOS_L1_2023-04-01.csv',sep=''))
 input$DATE<-as.POSIXct(input$DATE,format="%Y-%m-%d %H:%M:%S", tz = "Etc/GMT+6")
-
-# Define new data frame
 Data_QAQC<-input
 ```
 
@@ -203,15 +207,8 @@ met$Year <- as.numeric(str_sub(met$Timestamp, 1, 4))
 # Creating columns for new & renamed variables: net radiation, saturated vapour pressure (es), vpd. --> Missing Soil Heat Flux, so can't derive soil heat flux (G), & available energy (ae),
 met$NR <- met$RN # is radiation from met tower in Wm-2?
 
-# # Converting air and soil temp to Celsius
-# met$TA_1_1_1 <- met$TA_1_1_1 - 273.15
-# met$TS_1_1_1 <- met$TS_1_1_1 - 273.15
-# met$TS_2_1_1 <- met$TS_2_1_1 - 273.15
-# met$TS_3_1_1 <- met$TS_3_1_1 - 273.15
-
-# met$es <- 0.611*exp(17.502*met$TA_1_1_1/(met$TA_1_1_1+240.97))
-met$es <- 0.611*exp(17.502*met$TA_EP/(met$TA_EP+240.97))
-met$VPD <- met$es*(1-(met$RH_EP/100))
+met$es <- 0.611*exp(17.502*fluxnet$TA_EP[pmatch(met$Timestamp, fluxnet$DATE)]/(fluxnet$TA_EP[pmatch(met$Timestamp, fluxnet$DATE)]+240.97))
+met$VPD <- met$es*(1-(fluxnet$RH_EP[pmatch(met$Timestamp, fluxnet$DATE)]/100))
 
 ###
 # GAPFILLING: Checking for gaps in half-hourly data, then filling with NA in a new dataframe.
