@@ -7,7 +7,7 @@ knit: (function(inputFile, encoding) {
       rmarkdown::render(inputFile,
                         encoding=encoding, 
                         output_file=file.path('/home/otto/git/Manitoba_Flux_Processing/ATMOS_processing/', out_dir, 
-                        paste0(substr(inputFile,nchar(inputFile)-22,nchar(inputFile)-4), '_', Sys.Date(),'.html'))) })
+                        paste0(substr(inputFile,nchar(inputFile)-27,nchar(inputFile)-4), '_', Sys.Date(),'.html'))) })
 output: html_document
 ---
 
@@ -153,10 +153,11 @@ met$Month <- str_pad(met$Month, 2, 'left', pad = '0')
 met <- met %>% 
   fill(Year, Month, DOM, .direction = 'down') %>% 
   fill(Year, Month, DOM, .direction = 'up')
-met$Year <- paste0('20', met$Year)
+
+met$year <- paste0('20', met$Year)
 
 # format before correcting midnight dates
-met$date <- paste0(met$Year, '-', met$Month, '-', met$DOM) 
+met$date <- paste0(met$year, '-', met$Month, '-', met$DOM) 
 met$Timestamp <- paste(met$date, met$time)
 met$Timestamp
 
@@ -176,7 +177,7 @@ for(i in 1:length(met$Timestamp)){
                         '2022-12-31 0000',
                         '2023-01-31 0000')){
       if (met$date[i] == '2022-12-31'){
-        met$Year[i] <- met$Year[i+1]
+        met$year[i] <- met$year[i+1]
         met$Month[i] <- met$Month[i+1]
         met$DOM[i] <- met$DOM[i+1] # breaks if met stops on 0000h
       }else
@@ -188,7 +189,7 @@ for(i in 1:length(met$Timestamp)){
 }
 
 # reformat with correct midnight dates
-met$date <- paste0(met$Year, '-', met$Month, '-', met$DOM)
+met$date <- paste0(met$year, '-', met$Month, '-', met$DOM)
 met$Timestamp <- paste(met$date, met$time)
 
 met$Timestamp<-as.POSIXct(paste(met$date, met$time), format="%Y-%m-%d %H%M", tz = "Etc/GMT+6")
@@ -201,14 +202,21 @@ istart <- which(is.na(met$Timestamp))[1]-1
 met$Timestamp[istart:(istart + length(newTimestamp) - 1)] <- newTimestamp
 
 # Hour and Year columns for REddyProc ustar filtering
-met$Hour <- as.numeric(str_sub(met$Timestamp, 12, 13)) + (as.numeric(str_sub(met$Timestamp, 15, 16)) / 60)
-met$Year <- as.numeric(str_sub(met$Timestamp, 1, 4))
+met$hour <- as.numeric(str_sub(met$Timestamp, 12, 13)) + (as.numeric(str_sub(met$Timestamp, 15, 16)) / 60)
+met$year <- as.numeric(str_sub(met$Timestamp, 1, 4))
 
 # Creating columns for new & renamed variables: net radiation, saturated vapour pressure (es), vpd. --> Missing Soil Heat Flux, so can't derive soil heat flux (G), & available energy (ae),
-met$NR <- met$RN # is radiation from met tower in Wm-2?
 
-met$es <- 0.611*exp(17.502*fluxnet$TA_EP[pmatch(met$Timestamp, fluxnet$DATE)]/(fluxnet$TA_EP[pmatch(met$Timestamp, fluxnet$DATE)]+240.97))
-met$VPD <- met$es*(1-(fluxnet$RH_EP[pmatch(met$Timestamp, fluxnet$DATE)]/100))
+met$NR <- met$RN # is radiation from met tower in Wm-2?
+met$Tsoil_mean <- rowMeans(select_if(met, grepl('Tsoil_', names(met)) & !grepl('cm', names(met)) & !grepl('mean', names(met))), na.rm=T)
+
+met$DOY_START <- fluxnet$DOY_START[pmatch(met$Timestamp, fluxnet$DATE)]
+met$DOY_END <- fluxnet$DOY_END[pmatch(met$Timestamp, fluxnet$DATE)]
+met$TA_EP <- fluxnet$TA_EP[pmatch(met$Timestamp, fluxnet$DATE)]
+met$RH_EP <- fluxnet$RH_EP[pmatch(met$Timestamp, fluxnet$DATE)]
+met$es <- 0.611*exp(17.502*met$TA_EP/(met$TA_EP+240.97))
+met$VPD <- met$es*(1-(met$RH_EP/100))
+met$SW_IN_POT <- fluxnet$SW_IN_POT[pmatch(met$Timestamp, fluxnet$DATE)]
 
 ###
 # GAPFILLING: Checking for gaps in half-hourly data, then filling with NA in a new dataframe.
@@ -234,7 +242,7 @@ ts$Timestamp[1]
 # Dstart<-as.POSIXlt(ts[1,ncol(ts)])$yday # Starting date
 # Dend<-as.POSIXlt(ts[nrow(ts),ncol(ts)])$yday+1 # End date
 
-Ndays <- as.numeric((difftime(ts$Timestamp[nrow(ts)],ts$Timestamp[1], "Etc/GMT+6",
+Ndays <- as.numeric((difftime(newTimestamp[length(newTimestamp)],ts$Timestamp[1], "Etc/GMT+6",
                               units = c("days"))), units="days")
 
 Tsteps<-beginning+seq(from=0,to=((Ndays)*(60*60*24)),by=(30*60)) # 30 minute steps in seconds from the beginning date to Ndays +1 (to ensure all measured data are included in the new file)
@@ -246,7 +254,7 @@ DATE[length(DATE)] == ts$Timestamp[length(ts$Timestamp)]
 
 #GENERATING A NEW DATA FRAME WITH CONTINUOUS TIME STEPS and data from THE ORIGINAL ONE
 cont.DS<-as.data.frame(DATE)
-cont.DS[,c("DATE",names(ts)[1:(length(names(ts)))-1])]<-NA
+cont.DS[,c("DATE",names(ts)[1:length(names(ts))])]<-NA # changed from length(names(ts))-1 to keep last column
 cont.DS$DATE<-DATE
 
 #FILLING THE NEW DATAFRAME WITH DATA FROM THE ORIGINAL DATA FRAME 
@@ -278,8 +286,8 @@ met <- cont.DS
 
 met <- met[pmatch(Data_QAQC$DATE, met$DATE),] # trim to dates of flux file
 
-start_met <- min(which(!is.na(met$Tsoil_mean)))
-end_met <- max(which(!is.na(met$Tsoil_mean)))
+start_met <- min(which(!is.na(met$Timestamp)))
+end_met <- max(which(!is.na(met$Timestamp)))
 met <- met[start_met:end_met,]
 # met <- met[!is.na(met$Tsoil_mean),]
 
@@ -303,7 +311,7 @@ plot_ly(data = met, x = ~DATE, y = ~Tsoil_mean, type = 'scatter', mode = 'lines'
 
 ```{r Prepare data for ustar filtering using REddyProc, echo=FALSE, include=FALSE}
 Data_QAQC$DATE[1]
-met$date[1]
+met$DATE[1]
 
 Data_QAQC$obs<-c(1:nrow(Data_QAQC))
 met$obs1 <- c(1:nrow(met)) #Testing because 'obs' column doesn't start at 1 for some reason
@@ -334,14 +342,14 @@ M_end<-met[which(end_bool==TRUE),match('obs1',names(met))] #TEST
 M_end-M_start==F_end-F_start   #If everything goes well this should be TRUE 
 
 # # Create output file to use in REddyProc for ustar filtering
-output <- cbind(met[M_start:M_end,match(c('year','DOY_START','hour','TA_EP','SW_IN_POT'),names(met))], Data_QAQC[F_start:F_end,match(c('co2_flux','u.','wind_dir'),names(Data_QAQC))])
+output <- cbind(met[M_start:M_end,match(c('year','DOY_END','hour','TA_EP','SW_IN_POT'),names(met))], Data_QAQC[F_start:F_end,match(c('co2_flux','u.','wind_dir'),names(Data_QAQC))])
 
 # rounding DOY down
-output$DOY <- floor(output$DOY)
+output$DOY_END <- floor(output$DOY_END)
 
 
 # Reorder & rename columns
-output <- output[c("year","DOY", "hour","co2_flux","SW_IN_POT","TA_EP","u.","wind_dir")]
+output <- output[c("year","DOY_END", "hour","co2_flux","SW_IN_POT","TA_EP","u.","wind_dir")]
 names_output<-c('Year','DoY','Hour','NEE','Rg','Tair','Ustar',"Wind_dir")
 names(output)<-names_output
   
@@ -361,10 +369,11 @@ write.table(output, file = paste('/home/otto/data/atmos-flux-data/processed/REdd
 ```{r Ustar filtering in REddyProc, echo=FALSE, warning=FALSE, include=FALSE}
 # Load data
 EddyData.F <- fLoadTXTIntoDataframe(paste('/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_ustar_filtering_', Sys.Date(), '.txt', sep=''))
+# EddyData.F <- fLoadTXTIntoDataframe(paste('/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_ustar_filtering_2023-03-28.txt', sep=''))
 # EddyData.F <- read.csv('./processed/ATMOS_L1.csv')
 
 #Gapfill year and hour NA's
-na_idx = which(is.na(EddyData.F$Hour))
+na_idx = which(is.na(EddyData.F$Hour) | is.na(EddyData.F$DoY))
 
 for (idx in na_idx){
   previous_hour = EddyData.F$Hour[idx-1]
@@ -399,15 +408,13 @@ for (idx in na_idx){
   }
 }
 
+# if(typeof(EddyData1.F$Year)=='integer'){EddyData1.F$Year <- as.numeric(EddyData1.F$Year)}
 
 # Add time stamp in POSIX time format
 EddyDataWithPosix.F <- fConvertTimeToPosix(EddyData.F, TFormat = 'YDH',Year = 'Year',Day = 'DoY',Hour = 'Hour') # Year.s, Day.s, Hour.s deprecated
 
-
-
 EddyProc.C <- sEddyProc$new('ATMOS', EddyDataWithPosix.F,
                             c("NEE","Rg","Tair","Ustar"))
-
 
 # Single ustar threshold estimate
 uStarTh <- EddyProc.C$sEstUstarThreshold()$uStarTh
