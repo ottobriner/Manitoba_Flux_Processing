@@ -37,7 +37,7 @@ knitr::opts_knit$set(root.dir = dir)
 ```
 
 ```{r Load data, echo=FALSE, include=FALSE}
-EddyData.F <- fLoadTXTIntoDataframe(paste0("/home/otto/data/atmos-flux-data/processed/REddyProc_input/for_gap_filling_partitioning_ATMOS_2023-03-31.txt"))
+EddyData.F <- fLoadTXTIntoDataframe(paste0(dir, "/processed/REddyProc_input/for_gap_filling_partitioning_ATMOS_2023-04-11.txt"))
 ```
 
 ```{r Gap-fill and partition in REddyProc, echo=FALSE, include=FALSE}
@@ -277,9 +277,9 @@ essential <- FilledEddyData.F[,which(names(FilledEddyData.F) %in% essential_vari
 
 ```{r Load L2 data, echo=FALSE, include=FALSE}
 
-L2 <- read.csv(paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L2_2023-03-31", file_suffix, ".csv"))
+L2 <- read.csv(paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L2_2023-04-11", file_suffix, ".csv"))
 
-met <- read.csv(paste0('/home/otto/data/atmos-flux-data/processed/Gapfilled_biomet_2023-03-31', file_suffix, '.csv'))
+met <- read.csv(paste0('/home/otto/data/atmos-flux-data/processed/Gapfilled_biomet_2023-04-11', file_suffix, '.csv'))
 
 
 
@@ -289,29 +289,33 @@ met <- read.csv(paste0('/home/otto/data/atmos-flux-data/processed/Gapfilled_biom
 # REddyProc data 
 head(L2)
 head(essential)
-
+head(met)
 
 # Check to make sure files are of the same length and if TRUE, append to L2
 if (nrow(L2) == nrow(essential)){
   # If TRUE, Combine
   L3 <- cbind(L2,essential)}
 
-L3 <- merge(L3, met, by = "DATE") 
+# # drop old date and time cols from met
+# met <- met %>% select(!(date:time))
 
+L3 <- merge(L3, met, by = c('DATE'), suffixes = c('','.met'))
 
 write_csv(L3,paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L3_", Sys.Date(), file_suffix, ".csv"))
 
+L3
+
 ```
 
-```{r format for FLUXNET, echo=FALSE, include=FALSE}
+```{r format for fluxgapfill, echo=FALSE, include=FALSE}
 
 L3 <- read.csv(paste0('/home/otto/data/atmos-flux-data/processed/ATMOS_L3_', Sys.Date(), file_suffix, '.csv'))
 
-write_csv(L3,paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L3_", Sys.Date(), file_suffix, "_full_output.csv"))
-
 L3[is.na(L3)] = -9999
 
-write_csv(L3, paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L3_", Sys.Date(), file_suffix, "_fluxnet.csv"))
+write_csv(L3, paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L3_", Sys.Date(), file_suffix, "_fluxgapfill.csv"))
+
+
 
 ```
 
