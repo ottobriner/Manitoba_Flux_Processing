@@ -315,8 +315,6 @@ L3[is.na(L3)] = -9999
 
 write_csv(L3, paste0("/home/otto/data/atmos-flux-data/processed/ATMOS_L3_", Sys.Date(), file_suffix, "_fluxgapfill.csv"))
 
-
-
 ```
 
 

@@ -128,86 +128,140 @@ plot_ly(data = Data_QAQC, x = ~DATE, y = ~co2_flux, name = 'original', type = 's
 # 2023/01/27 - replacing biomet output compilation from Darian Ng with ATMOS biomet
 
 met <- data.frame()
+
 # fp <- paste("/home/otto/git/ATMOS484/output/ATMOS484_2023-04-21_trimmed.csv")
-fp <- paste("/home/otto/git/ATMOS484/output/ATMOS484.csv")
-# Get header names
-names_temp <- names(read.csv(fp))
+path <- "/home/otto/git/ATMOS484/output/"
+# path <- "/home/otto/data/atmos-flux-data/output/EP_outputs/"
 
-# Load data and apply header names
-temp <- read.csv(fp)
-names(temp) <- names_temp
 
-# Append to file
-met <- smartbind(met, temp, fill="NA")
+# List only ATMOS484 output files, and only the ones manually trimmed
+raw.files <- list.files(path = path, pattern = "ATMOS484_.+_trimmed", recursive = TRUE)
+raw.data <- data.frame()
 
-# Dropping all flux columns from ATMOS484
-met <- met %>% select(!(datetime:ch4_tc_3_mean))
-
-# Parse met tower timestamp
-met$time <- str_pad(met$Time, 4, 'left', pad = '0')
-met$hour <- str_sub(met$time, 0, 2)
-met$min <- str_sub(met$time, 3, 5)
-met <- met %>% 
-  fill(hour, .direction = 'up') %>% 
-  mutate(hour = str_replace_all(hour, '24', '00'),
-         min = replace_na(min, '00'))
-met$time <- paste0(met$hour, met$min)
-met$DOM <- str_pad(met$DOM, 2, 'left', pad = '0')
-met$Month <- str_pad(met$Month, 2, 'left', pad = '0')
-
-met <- met %>% 
-  fill(Year, Month, DOM, .direction = 'down') %>% 
-  fill(Year, Month, DOM, .direction = 'up')
-
-met$year <- paste0('20', met$Year)
-
-# format before correcting midnight dates
-met$date <- paste0(met$year, '-', met$Month, '-', met$DOM) 
-met$Timestamp <- paste(met$date, met$time)
-met$Timestamp
-
-for(i in 1:length(met$Timestamp)){ 
-  if (met$time[i]=='0000'){ # breaks if met stops on 0000h!
-    if (met$Timestamp[i] %in% c('2022-01-31 0000',
-                        '2022-02-28 0000',
-                        '2022-03-31 0000',
-                        '2022-04-30 0000',
-                        '2022-05-31 0000',
-                        '2022-06-30 0000',
-                        '2022-07-31 0000',
-                        '2022-08-31 0000',
-                        '2022-09-30 0000',
-                        '2022-10-31 0000',
-                        '2022-11-30 0000',
-                        '2022-12-31 0000',
-                        '2023-01-31 0000',
-                        '2023-02-28 0000',
-                        '2023-03-31 0000',
-                        '2023-04-30 0000')){
-      if (met$date[i] == '2022-12-31'){ # Happy New Year
-        met$year[i] <- met$year[i+1]
-        met$Month[i] <- met$Month[i+1]
-        met$DOM[i] <- met$DOM[i+1] 
-      }else
-      met$Month[i] <- met$Month[i+1] # Happy New Month
-      met$DOM[i] <- met$DOM[i+1]
-    }else
-    met$DOM[i] <- met$DOM[i+1] # Happy New Day
-  }
+for(i in 1:length(raw.files)) {
+  # Get header names
+  names_temp <- names(read.csv(paste(path,"/",raw.files[i],sep=""),skip=0,sep=",",header=TRUE,dec="."))
+	
+	# Load data & apply header names
+	temp <- read.csv(paste(path,"/",raw.files[i],sep=""),skip=1,header=FALSE) #skip=3 means skip the first 3 rows of the file
+	names(temp) <- names_temp
+	
+	# Append to file
+	# raw.data <- smartbind(raw.data,temp, fill = "NA")
+	raw.data <- bind_rows(raw.data,temp)
 }
 
-# reformat with correct midnight dates
-met$date <- paste0(met$year, '-', met$Month, '-', met$DOM)
-met$Timestamp <- paste(met$date, met$time)
+```
 
-met$Timestamp<-as.POSIXct(paste(met$date, met$time), format="%Y-%m-%d %H%M", tz = "Etc/GMT+6")
-# met$Timestamp <- as.POSIXct(met$date, tz = "Etc/GMT+6")
+```{r parse flux timestamp on ATMOS484 output, echo=FALSE, include=FALSE}
+####
+# 2. Creating a Timestamp with date and time variable to order the data by date-time
+###
+raw.data$Timestamp<-as.POSIXct(raw.data$datetime, format="%Y-%m-%dT%H:%M:%S", tz = "Etc/GMT+6")
 
-# Replace after 2022-11-30 23:30:00 with new timestamp
-newTimestamp <- seq(from = as.POSIXct('2022-12-01 00:00:00 -06', tz = "Etc/GMT+6"), length = (48*(31+31+28)), by=difftime(met$Timestamp[2],met$Timestamp[1], "Etc/GMT+6"))
-istart <- which(is.na(met$Timestamp))[1]-1
+data.ordered<-raw.data[order(raw.data$Timestamp, decreasing = FALSE ),]
 
-met$Timestamp[istart:(istart + length(newTimestamp) - 1)] <- newTimestamp
+data.ordered[1,1:5]
+data.ordered[nrow(data.ordered),1:5]
+
+####
+#3. GAPFILLING ROWS BY GENERATING A NEW FILE  (Adapted from my "Gapfilling incomplete Time series" script)
+#####
+
+met<-data.ordered
+```
+
+```{r old loading for single met file, echo=FALSE, include=FALSE}
+# 
+# fp <- paste("/home/otto/git/ATMOS484/output/ATMOS484.csv")
+# 
+# 
+# # Get header names
+# names_temp <- names(read.csv(fp))
+# 
+# # Load data and apply header names
+# temp <- read.csv(fp)
+# names(temp) <- names_temp
+# 
+# # Append to file
+# met <- smartbind(met, temp, fill="NA")
+```
+
+```{r parse met timestamp, echo=FALSE, include=FALSE}
+# # Dropping all flux columns from ATMOS484
+# met <- met %>% select(!(datetime:ch4_tc_3_mean))
+# 
+# # Parse met tower timestamp
+# met$time <- str_pad(met$Time, 4, 'left', pad = '0')
+# met$hour <- str_sub(met$time, 0, 2)
+# met$min <- str_sub(met$time, 3, 5)
+# met <- met %>% 
+#   fill(hour, .direction = 'up') %>% 
+#   mutate(hour = str_replace_all(hour, '24', '00'),
+#          min = replace_na(min, '00'))
+# met$time <- paste0(met$hour, met$min)
+# met$DOM <- str_pad(met$DOM, 2, 'left', pad = '0')
+# met$Month <- str_pad(met$Month, 2, 'left', pad = '0')
+# 
+# met <- met %>% 
+#   fill(Year, Month, DOM, .direction = 'down') %>% 
+#   fill(Year, Month, DOM, .direction = 'up')
+# 
+# met$year <- paste0('20', met$Year)
+# 
+# # format before correcting midnight dates
+# met$date <- paste0(met$year, '-', met$Month, '-', met$DOM) 
+# met$Timestamp <- paste(met$date, met$time)
+# met$Timestamp
+# 
+# for(i in 1:length(met$Timestamp)){ 
+#   if (met$time[i]=='0000'){ # breaks if met stops on 0000h!
+#     if (met$Timestamp[i] %in% c('2022-01-31 0000',
+#                         '2022-02-28 0000',
+#                         '2022-03-31 0000',
+#                         '2022-04-30 0000',
+#                         '2022-05-31 0000',
+#                         '2022-06-30 0000',
+#                         '2022-07-31 0000',
+#                         '2022-08-31 0000',
+#                         '2022-09-30 0000',
+#                         '2022-10-31 0000',
+#                         '2022-11-30 0000',
+#                         '2022-12-31 0000',
+#                         '2023-01-31 0000',
+#                         '2023-02-28 0000',
+#                         '2023-03-31 0000',
+#                         '2023-04-30 0000')){
+#       if (met$date[i] == '2022-12-31'){ # Happy New Year
+#         met$year[i] <- met$year[i+1]
+#         met$Month[i] <- met$Month[i+1]
+#         met$DOM[i] <- met$DOM[i+1] 
+#       }else
+#       met$Month[i] <- met$Month[i+1] # Happy New Month
+#       met$DOM[i] <- met$DOM[i+1]
+#     }else
+#     met$DOM[i] <- met$DOM[i+1] # Happy New Day
+#   }
+# }
+# 
+# # reformat with correct midnight dates
+# met$date <- paste0(met$year, '-', met$Month, '-', met$DOM)
+# met$Timestamp <- paste(met$date, met$time)
+# 
+# met$Timestamp<-as.POSIXct(paste(met$date, met$time), format="%Y-%m-%d %H%M", tz = "Etc/GMT+6")
+# # met$Timestamp <- as.POSIXct(met$date, tz = "Etc/GMT+6")
+# 
+# # Replace after 2022-11-30 23:30:00 with new timestamp
+# newTimestamp <- seq(from = as.POSIXct('2022-12-01 00:00:00 -06', tz = "Etc/GMT+6"), length = (48*(31+31+28)), by=difftime(met$Timestamp[2],met$Timestamp[1], "Etc/GMT+6"))
+# istart <- which(is.na(met$Timestamp))[1]-1
+# 
+# met$Timestamp[istart:(istart + length(newTimestamp) - 1)] <- newTimestamp
+```
+
+```{r next, echo=FALSE, include=FALSE}
+
+# datetime is parsed to Timestamp, so dropping all flux columns from ATMOS484
+met <- met %>% select(!(datetime:ch4_tc_3_mean))
 
 # Hour and Year columns for REddyProc ustar filtering
 met$hour <- as.numeric(str_sub(met$Timestamp, 12, 13)) + (as.numeric(str_sub(met$Timestamp, 15, 16)) / 60)
